@@ -628,8 +628,7 @@ test("the analyze step asks for the build's safety issues", () => {
 });
 
 // A safe build is recorded, its lock audited, and the reviewer is asked alone for their build
-// decision, worded by the safe verdict: the review file holds that one question, and the
-// record the lock's counts.
+// decision: the review file holds that one question, and the record the lock's counts.
 test("a safe build is audited, then asks the reviewer's decision", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
@@ -654,7 +653,7 @@ test("a safe build is audited, then asks the reviewer's decision", async () => {
   assert.deepEqual(rest, []);
   assert.equal(managers.index, "SCA_BUILD_DECISION");
   assert.equal(managers.answer, null);
-  assert.ok(managers.message.startsWith("The agent judged the build safe."));
+  assert.ok(managers.message.startsWith("Let the agent build the add-on"));
   assert.deepEqual(
     managers.answers.map((a) => a.label),
     ["Let the agent build", "Build it myself"]
@@ -662,29 +661,85 @@ test("a safe build is audited, then asks the reviewer's decision", async () => {
   cleanup(work);
 });
 
-// An unsafe verdict is put to the reviewer too, worded by it, its lock audited before.
-test("an unsafe build is audited, then asks the reviewer", async () => {
+// An unsafe verdict is put to the reviewer at a step of its own, its lock audited before: skip
+// the build, or override the verdict. Nothing is decided yet.
+test("an unsafe build is audited, then asks whether to override it", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { vulns: TOOL_CLEAN }
   );
   const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: UNSAFE });
   assert.equal(at.next, "step");
-  assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.overrideUnsafe);
   assert.equal(at.record.current.buildSafety, "unsafe");
+  assert.equal(at.record.current.packageManagers, null);
+  assert.equal(at.record.current.buildSafe, null);
   assert.deepEqual(at.record.current.vulnerabilities, NONE, "audited");
-  const [decision] = reviewEntries(work);
-  assert.ok(decision.message.startsWith("The agent judged the build unsafe"));
+  assert.deepEqual(recordOf(work), at.record);
+  const [override, ...rest] = reviewEntries(work);
+  assert.deepEqual(rest, []);
+  assert.equal(override.index, "SCA_BUILD_OVERRIDE");
+  assert.ok(override.message.startsWith("The agent judged the build unsafe"));
   assert.deepEqual(
-    decision.answers.map((a) => a.label),
-    ["Trust the verdict, do not build", "Build anyhow"]
+    override.answers.map((a) => a.label),
+    ["Skip building", "Continue building"]
   );
   cleanup(work);
 });
 
-// Each answer of the decision, after its verdict: whether the build is held safe, whether the
-// agent builds it, and the reviewer's own words as the reasons for holding it unsafe. Only an
-// answer that lets the agent build goes on to the audit, whose clean lock is built.
+// Skipping an unsafe build holds it unsafe and builds nothing. Continuing moves on to the
+// build decision, as for a safe build, with nothing else recorded. The question takes one of
+// its two labels only: the reviewer's own words are refused, with nothing changed.
+test("the override of an unsafe build records what the reviewer answered", async () => {
+  const unsafe = () => {
+    const work = workFolder(
+      { "package.json": packageFile(), "package-lock.json": npmLock() },
+      { vulns: TOOL_CLEAN }
+    );
+    return analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: UNSAFE }).then(
+      () => work
+    );
+  };
+  const skipped = await unsafe();
+  answer(skipped, { SCA_BUILD_OVERRIDE: "Skip building" });
+  const done = await stepOn(skipped);
+  assert.equal(done.next, "review");
+  const { packageManagers, buildSafe, buildReasons, step } =
+    done.record.current;
+  assert.deepEqual(
+    [packageManagers, buildSafe, buildReasons, step],
+    [false, false, null, BUILD_CHECK_STEP.done]
+  );
+  cleanup(skipped);
+  const continued = await unsafe();
+  answer(continued, { SCA_BUILD_OVERRIDE: "Continue building" });
+  const asked = await stepOn(continued);
+  assert.equal(asked.next, "step");
+  assert.equal(asked.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.equal(asked.record.current.buildSafety, "unsafe");
+  assert.equal(asked.record.current.buildSafe, null);
+  assert.deepEqual(recordOf(continued), asked.record);
+  assert.deepEqual(
+    reviewEntries(continued).map((e) => e.index),
+    ["SCA_BUILD_DECISION"]
+  );
+  cleanup(continued);
+  const worded = await unsafe();
+  answer(worded, { SCA_BUILD_OVERRIDE: "It looks fine to me." });
+  await assert.rejects(
+    stepOn(worded),
+    refused(
+      'SCA_BUILD_OVERRIDE answers "It looks fine to me.", which this entry'
+    )
+  );
+  assert.equal(recordOf(worded).current.step, BUILD_CHECK_STEP.overrideUnsafe);
+  cleanup(worded);
+});
+
+// Each answer of the decision, after a safe verdict or an overridden unsafe one: whether the
+// build is held safe, whether the agent builds it, and the reviewer's own words as the reasons
+// for holding it unsafe. Only an answer that lets the agent build goes on to the audit, whose
+// clean lock is built.
 test("the build decision records what the reviewer answered", async () => {
   const words = "It downloads a binary from a host nobody pinned.";
   for (const [verdict, given, expected] of [
@@ -693,10 +748,10 @@ test("the build decision records what the reviewer answered", async () => {
     ["safe", words, [false, false, words, BUILD_CHECK_STEP.done]],
     [
       "unsafe",
-      "Trust the verdict, do not build",
-      [false, false, null, BUILD_CHECK_STEP.done],
+      "Let the agent build",
+      [true, true, null, BUILD_CHECK_STEP.build],
     ],
-    ["unsafe", "Build anyhow", [true, true, null, BUILD_CHECK_STEP.build]],
+    ["unsafe", "Build it myself", [false, true, null, BUILD_CHECK_STEP.done]],
     ["unsafe", words, [false, false, words, BUILD_CHECK_STEP.done]],
   ]) {
     const work = workFolder(
@@ -706,6 +761,10 @@ test("the build decision records what the reviewer answered", async () => {
     await analyzeStep(work, {
       SCA_BUILD_SAFETY_ISSUES: verdict === "unsafe" ? UNSAFE : [],
     });
+    if (verdict === "unsafe") {
+      answer(work, { SCA_BUILD_OVERRIDE: "Continue building" });
+      await stepOn(work);
+    }
     answer(work, { SCA_BUILD_DECISION: given });
     const at = await stepOn(work);
     const { packageManagers, buildSafe, buildReasons, step } =

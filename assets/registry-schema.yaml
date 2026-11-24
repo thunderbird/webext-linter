@@ -307,6 +307,24 @@ shapes:
         the condition the value is offered under, read like a step's `when:`, so an answer
         that means nothing in this review is not offered in it
 
+  # One answer the build check's SCA_BUILD_OVERRIDE question offers.
+  build-override-value-entry:
+    value:
+      kind: one-of
+      values: BUILD_OVERRIDE_VALUES
+      required: true
+      why: >-
+        the id the build check reads the reviewer's answer as: build nothing, or go on to the
+        build decision as if the build were safe
+    label:
+      kind: text
+      required: true
+      why: what the answer is called where it is offered, and what comes back
+    description:
+      kind: text
+      required: true
+      why: what follows from it, so the reviewer can choose
+
   # One answer the build check's SCA_BUILD_DECISION question offers.
   build-decision-value-entry:
     value:
@@ -445,14 +463,22 @@ sections:
         noun: "`analyze` steps"
         why: >-
           the steps the prompt that has the build worked out and judged asks for, in order
+      override-unsafe:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`override-unsafe` steps"
+        why: >-
+          the steps the prompt that shows the build details after an unsafe verdict and asks
+          the reviewer whether to override it asks for, in order
       decision:
         kind: list
         of: mapping
         required: true
         noun: "`decision` steps"
         why: >-
-          the steps the prompt that shows the build details and asks the reviewer's build
-          decision asks for, in order
+          the steps the prompt that shows the build details, where the override-unsafe prompt
+          did not, and asks the reviewer's build decision asks for, in order
       build:
         kind: list
         of: mapping
@@ -515,48 +541,44 @@ sections:
                 kind: text
                 required: true
                 why: when that answer applies, so the one answering can choose it
+      build-override:
+        kind: object
+        required: true
+        noun: "`build-override` question"
+        why: >-
+          whether the reviewer overrides an unsafe verdict, put in the override-unsafe prompt
+          before the build decision
+        fields:
+          question:
+            kind: text
+            required: true
+            why: what the reviewer is asked, relayed as it is written
+          values:
+            kind: entries
+            shape: build-override-value-entry
+            name-key: value
+            required: true
+            noun: "`values`"
+            why: the two answers the question offers, skip and continue
       build-decision:
         kind: object
         required: true
         noun: "`build-decision` question"
         why: >-
-          the reviewer's one decision about the build, put in the permission prompt, worded
-          by the agent's verdict
+          the reviewer's one decision about the build, put in the decision prompt after a
+          safe verdict or an overridden unsafe one
         fields:
-          safe:
-            kind: object
+          question:
+            kind: text
             required: true
-            noun: "`safe` question"
-            why: the decision as it is put after a safe verdict
-            fields:
-              question:
-                kind: text
-                required: true
-                why: what the reviewer is asked, relayed as it is written
-              values:
-                kind: entries
-                shape: build-decision-value-entry
-                name-key: value
-                required: true
-                noun: "`values`"
-                why: the two answers the question offers, allow and manual
-          unsafe:
-            kind: object
+            why: what the reviewer is asked, relayed as it is written
+          values:
+            kind: entries
+            shape: build-decision-value-entry
+            name-key: value
             required: true
-            noun: "`unsafe` question"
-            why: the decision as it is put after an unsafe verdict
-            fields:
-              question:
-                kind: text
-                required: true
-                why: what the reviewer is asked, relayed as it is written
-              values:
-                kind: entries
-                shape: build-decision-value-entry
-                name-key: value
-                required: true
-                noun: "`values`"
-                why: the two answers the question offers, skip and override
+            noun: "`values`"
+            why: the two answers the question offers, allow and manual
 
   llm-phases:
     kind: object

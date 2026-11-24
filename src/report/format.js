@@ -510,8 +510,8 @@ function valueLines(entries) {
  *   `sca/`.
  * @param {string} [values.buildRoot]  On the build and rescue prompts: the package root in
  *   `build/`, where the agent builds.
- * @param {string[]} [values.buildDetails]  On the decision prompt: the Build Review
- *   Details block, its waiting line included, filled into the step that shows it.
+ * @param {string[]} [values.buildDetails]  On the override-unsafe and decision prompts: the
+ *   Build Review Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On the rescue prompt: the package root in the rescued copy.
  * @param {string[]} [values.copy]  On the rescue prompt: the commands that replace `build/`
  *   with a copy of the whole `rescued/`, composed by the front-end.
@@ -520,6 +520,9 @@ function valueLines(entries) {
  *   here, never added to, trimmed or second-guessed.
  * @param {boolean} [values.findExperiment]  Whether `unpack` asks for the Experiment folder
  *   (src/build-check/steps.js asksExperiments).
+ * @param {boolean} [values.buildOverridden]  On the decision prompt: whether the reviewer
+ *   overrode an unsafe verdict at `override-unsafe`, which already showed the Build Review
+ *   Details.
  * @returns {string[]}
  */
 export function scaPromptLines(prompt, list, values) {
@@ -558,9 +561,13 @@ export function scaPromptLines(prompt, list, values) {
   // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
   // for a file that does not exist - or, worse, for a different one that does.
   const command = values.flags.map(displayPath);
-  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): only whether `unpack`
-  // asks for the Experiment folder.
-  const facts = new Set(values.findExperiment ? ["find-experiment"] : []);
+  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): whether `unpack` asks
+  // for the Experiment folder, and whether `decision` follows an override of an unsafe
+  // verdict.
+  const facts = new Set([
+    ...(values.findExperiment ? ["find-experiment"] : []),
+    ...(values.buildOverridden ? ["build-overridden"] : []),
+  ]);
   const steps = prompt.steps[list].filter(
     (step) => step.when === null || holds(step.when, facts)
   );

@@ -1553,7 +1553,7 @@ test("the build check prompts come from the registry and every part is required"
   badMarker.doc["llm-sca-review-prompt"].analyze[0].when = "experiment";
   assert.throws(
     () => checkScaPrompt(badMarker),
-    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: find-experiment\)/
+    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: find-experiment, build-overridden\)/
   );
 
   // And the shared step rule: every prompt is numbered by the renderer.
@@ -1576,44 +1576,55 @@ test("the build check prompts come from the registry and every part is required"
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].analyze[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
-  // The build decision offers each verdict's two answers once each, under labels of their
-  // own: every answer that is no reviewer's own words is read as one of them.
+  // The override question and the build decision each offer their two answers once each,
+  // under labels of their own: every answer is read as one of them, the decision's own
+  // words of the reviewer apart.
   assert.deepEqual(
-    Object.fromEntries(
-      Object.entries(prompt.buildDecision).map(([verdict, q]) => [
-        verdict,
-        q.values.map((v) => v.value),
-      ])
-    ),
-    { safe: ["allow", "manual"], unsafe: ["skip", "override"] }
+    prompt.buildOverride.values.map((v) => v.value),
+    ["skip", "continue"]
   );
-  const decision = (mutate) => {
+  assert.deepEqual(
+    prompt.buildDecision.values.map((v) => v.value),
+    ["allow", "manual"]
+  );
+  const asked = (key, mutate) => {
     const r = loadRegistry();
-    mutate(r.doc["llm-sca-review-prompt"]["build-decision"]);
+    mutate(r.doc["llm-sca-review-prompt"][key]);
     return r;
   };
+  for (const key of ["build-override", "build-decision"]) {
+    assert.throws(
+      () => checkScaPrompt(asked(key, (d) => delete d.question)),
+      /authors no `question`/,
+      key
+    );
+    assert.throws(
+      () => checkScaPrompt(asked(key, (d) => (d.values[1].value = "maybe"))),
+      /invalid `value` "maybe"/,
+      key
+    );
+    assert.throws(
+      () =>
+        checkScaPrompt(
+          asked(key, (d) => (d.values[1].label = d.values[0].label))
+        ),
+      /offers one label twice/,
+      key
+    );
+  }
   assert.throws(
-    () => checkScaPrompt(decision((d) => delete d.unsafe.question)),
-    /authors no `question`/
-  );
-  assert.throws(
-    () => checkScaPrompt(decision((d) => (d.safe.values[1].value = "maybe"))),
-    /invalid `value` "maybe"/
-  );
-  assert.throws(
-    () => checkScaPrompt(decision((d) => (d.safe.values[1].value = "allow"))),
+    () =>
+      checkScaPrompt(
+        asked("build-decision", (d) => (d.values[1].value = "allow"))
+      ),
     /offers `allow` other than once/
-  );
-  assert.throws(
-    () => checkScaPrompt(decision((d) => (d.unsafe.values[1].value = "allow"))),
-    /`build-decision` `unsafe` offers `allow`, which is not one of its answers/
   );
   assert.throws(
     () =>
       checkScaPrompt(
-        decision((d) => (d.safe.values[1].label = d.safe.values[0].label))
+        asked("build-override", (d) => (d.values[1].value = "skip"))
       ),
-    /offers one label twice/
+    /offers `skip` other than once/
   );
   // The build and the rescue each name what the build produced, or their one label.
   assert.equal(prompt.buildOutput.failed.label, "The build failed");

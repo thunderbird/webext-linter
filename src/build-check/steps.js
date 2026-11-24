@@ -10,13 +10,15 @@
 // root's lock (./audit.js), before anyone is asked. A lock the audit cannot read in full is
 // done at once: nothing is asked or built, and the review it starts aborts on that lock. So is
 // a lock with a declared dependency nobody can review: the review aborts on that dependency,
-// and nothing is built that runs it. Otherwise, after either verdict, it moves on to
-// `decision`, which shows the reviewer the Build Review Details and asks them alone for the one
-// decision about the build, worded by the verdict: let the agent build or build it themselves
-// after a safe one, build nothing or let the agent build anyhow after an unsafe one, or, after
-// either, hold it unsafe for reasons of their own (pre-answered where the hot runs switched the
-// agent's builds on, which skips that step). Unless they let the agent build, the folder is done
-// at once: a rescue runs package-manager commands, so none is tried. Otherwise the audit decides.
+// and nothing is built that runs it. Otherwise an unsafe verdict moves on to `override-unsafe`,
+// which shows the reviewer the Build Review Details and asks them alone whether to skip the
+// build, which is done at once, or to override the verdict and go on as if the build were safe.
+// A safe verdict, or an overridden one, moves on to `decision`, which shows the Build Review
+// Details where `override-unsafe` did not and asks them alone for the one decision about the
+// build: let the agent build or build it themselves, or hold it unsafe for reasons of their own
+// (pre-answered where the hot runs switched the agent's builds on, which skips both steps).
+// Unless they let the agent build, the folder is done at once: a rescue runs package-manager
+// commands, so none is tried. Otherwise the audit decides.
 // A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`, and the
 // agent builds the original there, as the lock pins it, and names what the build produced, or
 // that it failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work
@@ -97,6 +99,9 @@ const EXPERIMENTS = "SCA_EXPERIMENTS";
 /** The review file's entry for the reviewer's build decision, as `llm-sca-review-prompt`
  *  names it. */
 const SCA_BUILD_DECISION = "SCA_BUILD_DECISION";
+/** The review file's entry for whether the reviewer overrides an unsafe verdict, as
+ *  `llm-sca-review-prompt` names it. */
+const SCA_BUILD_OVERRIDE = "SCA_BUILD_OVERRIDE";
 /** The review file's entry for what the build reaches for outside the declared dependencies,
  *  as `llm-sca-review-prompt` names it: the list the verdict is read off. */
 const SCA_BUILD_SAFETY_ISSUES = "SCA_BUILD_SAFETY_ISSUES";
@@ -130,8 +135,9 @@ function agentBuildsSwitchedOn() {
  */
 
 /**
- * The registry's build decision, as llmScaReviewPrompt gives it: one question per verdict.
- * @typedef {ScaPrompt["buildDecision"]} BuildDecisionAsk
+ * A question the build check puts to the reviewer, as llmScaReviewPrompt gives it: the build
+ * decision, or the override of an unsafe verdict.
+ * @typedef {ScaPrompt["buildDecision"]} BuildValueAsk
  */
 
 /**
@@ -176,17 +182,29 @@ export function analyzeEntries() {
 }
 
 /**
- * The entry the reviewer makes their build decision in, worded by the agent's verdict and
- * built as a process value's entry is. It is answered with one of its labels or the
- * reviewer's own words (decision).
- * @param {BuildDecisionAsk} question
- * @param {string} verdict  The agent's verdict, a BUILD_SAFETY_VALUES id.
+ * The entry the reviewer makes their build decision in, about a build held safe, built as a
+ * process value's entry is. It is answered with one of its labels or the reviewer's own words
+ * (decision).
+ * @param {BuildValueAsk} question
  * @returns {object}
  */
-function decisionEntry(question, verdict) {
+function decisionEntry(question) {
   return valueEntry(
-    { name: SCA_BUILD_DECISION, values: question[verdict].values },
-    question[verdict].question
+    { name: SCA_BUILD_DECISION, values: question.values },
+    question.question
+  );
+}
+
+/**
+ * The entry the reviewer overrides an unsafe verdict in, or does not, built as a process
+ * value's entry is. It is answered with one of its labels and nothing else (overrideUnsafe).
+ * @param {BuildValueAsk} question
+ * @returns {object}
+ */
+function overrideEntry(question) {
+  return valueEntry(
+    { name: SCA_BUILD_OVERRIDE, values: question.values },
+    question.question
   );
 }
 
@@ -332,6 +350,8 @@ export async function handBack(work, record, registry) {
   switch (record.current.step) {
     case BUILD_CHECK_STEP.analyze:
       return analyze(work, record, context, prompt, registry);
+    case BUILD_CHECK_STEP.overrideUnsafe:
+      return overrideUnsafe(work, record, prompt);
     case BUILD_CHECK_STEP.decision:
       return decision(work, record, prompt);
     case BUILD_CHECK_STEP.build:
@@ -430,8 +450,13 @@ async function analyze(work, record, context, prompt, registry) {
     const id = buildSafety === "safe" ? "allow" : "skip";
     return decided(work, audited, id, null, prompt);
   }
+  if (buildSafety === "unsafe") {
+    return ask(movedOn(audited, { step: BUILD_CHECK_STEP.overrideUnsafe }), [
+      overrideEntry(prompt.buildOverride),
+    ]);
+  }
   return ask(movedOn(audited, { step: BUILD_CHECK_STEP.decision }), [
-    decisionEntry(prompt.buildDecision, buildSafety),
+    decisionEntry(prompt.buildDecision),
   ]);
 }
 
@@ -479,9 +504,39 @@ function answerOf(work, entry, phase) {
 }
 
 /**
+ * The override-unsafe step, handed back: whether the reviewer overrides the unsafe verdict,
+ * one of the two labels its question offers and nothing else (answersOf, as a value).
+ * Skipping holds the build unsafe and builds nothing, as their own words at the decision do.
+ * Continuing moves the record on to the decision, as if the build were safe, with nothing
+ * else recorded: an unsafe verdict at the decision is an overridden one.
+ * @param {string} work
+ * @param {object} record  At `override-unsafe`.
+ * @param {ScaPrompt} prompt
+ * @returns {Handout}
+ * @throws {HandbackRefused}
+ */
+function overrideUnsafe(work, record, prompt) {
+  const entry = overrideEntry(prompt.buildOverride);
+  const answer = answerOf(work, entry, {
+    name: "override-unsafe",
+    answer: "value",
+  });
+  if (answer === undefined) {
+    return ask(record, [entry]);
+  }
+  const picked = prompt.buildOverride.values.find((v) => v.label === answer);
+  if (picked.value === "skip") {
+    return decided(work, record, "skip", null, prompt);
+  }
+  return ask(movedOn(record, { step: BUILD_CHECK_STEP.decision }), [
+    decisionEntry(prompt.buildDecision),
+  ]);
+}
+
+/**
  * The decision step, handed back: the reviewer's build decision read, one of the labels its
- * verdict's question offers, or their own words, which hold the build unsafe for the reasons
- * they give, held to the rule a reviewer's note is (checkedNote).
+ * question offers, or their own words, which hold the build unsafe for the reasons they give,
+ * held to the rule a reviewer's note is (checkedNote).
  * @param {string} work
  * @param {object} record
  * @param {ScaPrompt} prompt
@@ -489,12 +544,12 @@ function answerOf(work, entry, phase) {
  * @throws {HandbackRefused}
  */
 function decision(work, record, prompt) {
-  const entry = decisionEntry(prompt.buildDecision, record.current.buildSafety);
+  const entry = decisionEntry(prompt.buildDecision);
   const answer = answerOf(work, entry, { name: "decision", answer: "words" });
   if (answer === undefined) {
     return ask(record, [entry]);
   }
-  const offered = prompt.buildDecision[record.current.buildSafety].values;
+  const offered = prompt.buildDecision.values;
   const picked = pickedChoice(answer, offered);
   if (picked) {
     return decided(work, record, picked.value, null, prompt);
@@ -508,11 +563,13 @@ function decision(work, record, prompt) {
 
 /**
  * The reviewer's build decision, recorded: whether the build is safe, and whether the agent
- * builds it (`allow` and `override`), which `permitted` goes on from. Their own words are no
- * id, and hold the build unsafe for those reasons.
+ * builds it (`allow`), which `permitted` goes on from. `skip` is the override-unsafe step's,
+ * which holds the build unsafe. Their own words are no id, and hold the build unsafe for
+ * those reasons.
  * @param {string} work
  * @param {object} record  Audited at `analyze`.
- * @param {?string} id  A BUILD_DECISION_VALUES id, or null for the reviewer's own words.
+ * @param {?string} id  A BUILD_DECISION_VALUES id, `skip`, or null for the reviewer's own
+ *   words.
  * @param {?string} reasons  Those words, where they gave them.
  * @param {ScaPrompt} prompt
  * @returns {Handout}
@@ -521,8 +578,8 @@ function decided(work, record, id, reasons, prompt) {
   return permitted(
     work,
     movedOn(record, {
-      packageManagers: id === "allow" || id === "override",
-      buildSafe: id === "allow" || id === "manual" || id === "override",
+      packageManagers: id === "allow",
+      buildSafe: id === "allow" || id === "manual",
       buildReasons: reasons,
     }),
     prompt
@@ -931,9 +988,16 @@ export function stepPromptLines(work, record, registry, start = {}) {
       scaPackageRoot: roots.packageRoot,
       buildProcess: paths.build,
     }),
+    [BUILD_CHECK_STEP.overrideUnsafe]: () => ({
+      answers: paths.answers,
+      buildDetails: buildDetailLines(work, record, registry),
+    }),
+    // After an override the reviewer has read the Build Review Details at `override-unsafe`,
+    // and its decision prompt does not show them again (`when: NOT build-overridden`).
     [BUILD_CHECK_STEP.decision]: () => ({
       answers: paths.answers,
       buildDetails: buildDetailLines(work, record, registry),
+      buildOverridden: record.current.buildSafety === "unsafe",
     }),
     [BUILD_CHECK_STEP.build]: () => ({
       answers: paths.answers,

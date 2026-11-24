@@ -2799,13 +2799,37 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
-  # Printed after the build analysis and the audit of the lock, after either verdict, unless
-  # the agent-builds test switch answered its question up front, a build-guard check is
+  # Printed after the build analysis and the audit of the lock where the verdict is unsafe,
+  # unless the agent-builds test switch answered for the reviewer, a build-guard check is
   # switched off, or the audit found nothing the agent may build. The Build Review Details end
-  # the agent's turn, as a turn-ending pass of the review loop does, and the question is put
-  # once the reviewer has replied.
-  decision:
+  # the agent's turn, as at `decision`, and the question is put once the reviewer has replied.
+  # It takes one of its two labels and nothing else: it is only whether the verdict is
+  # overridden, and reasons of the reviewer's own are given at `decision`.
+  override-unsafe:
     - text: |-
+        Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+        {{buildDetails}}
+    - text: |-
+        Open ANSWERS, given above. Put its entry whose "index" is SCA_BUILD_OVERRIDE to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+        Record the label they picked in that entry's "answer", exactly as it is written, and nothing else. Where they type words of their own instead, ask the question again: this question takes one of its two labels only. Change nothing else in the file.
+    - text: |-
+        Run the linter with exactly these flags, and nothing else:
+
+        {{flags}}
+    - text: |-
+        That run reads the answer and prints the next prompt. Follow it from there - this one is done.
+  # Printed after the build analysis and the audit of the lock where the verdict is safe, or
+  # after the reviewer overrode an unsafe one at `override-unsafe`, unless the agent-builds
+  # test switch answered its question up front, a build-guard check is switched off, or the
+  # audit found nothing the agent may build. The Build Review Details end the agent's turn, as
+  # a turn-ending pass of the review loop does, and the question is put once the reviewer has
+  # replied. After an override they were shown at `override-unsafe` already, so the first step
+  # is left out (`build-overridden`).
+  decision:
+    - when: NOT build-overridden
+      text: |-
         Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
 
         {{buildDetails}}
@@ -2819,33 +2843,34 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
-  # The reviewer's one decision about the build, as the SCA_BUILD_DECISION entry of ANSWERS,
-  # worded by the agent's verdict (src/build-check/steps.js decision). An answer is the label of
-  # one of the verdict's two values, or the reviewer's own words, which override the verdict:
-  # the build is unsafe, for the reasons they give. Only `allow` and `override` let the agent
-  # build. `manual` leaves the build to the reviewer, whom the `built` question asks of their
-  # own build. `skip` and the reviewer's own words build nothing, and build-unsafe reports it.
+  # Whether the reviewer overrides an unsafe verdict, as the SCA_BUILD_OVERRIDE entry of ANSWERS
+  # (src/build-check/steps.js overrideUnsafe). `skip` builds nothing, and build-unsafe reports
+  # each issue. `continue` goes on to the build decision as if the build were safe.
+  build-override:
+    question: |-
+      The agent judged the build unsafe, for the issues listed in build-issues.md (SCA_BUILD_SAFETY_ISSUES in the Build Review Details). Skip building, or override the verdict and continue as if the build were safe?
+    values:
+      - value: skip
+        label: Skip building
+        description: The build is unsafe. Nobody builds it, and the review reports each issue listed in build-issues.md to the developer as an unsafe build.
+      - value: continue
+        label: Continue building
+        description: The build issues the agent found are cleared, and the build is treated as safe. The build question follows.
+  # The reviewer's one decision about a build held safe, by the verdict or by their override, as
+  # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). An answer is the
+  # label of one of its two values, or the reviewer's own words: the build is unsafe, for the
+  # reasons they give, and build-unsafe reports it. Only `allow` lets the agent build. `manual`
+  # leaves the build to the reviewer, whom the `built` question asks of their own build.
   build-decision:
-    safe:
-      question: |-
-        The agent judged the build safe. Let the agent build the add-on, including its package-manager commands, or build it yourself? To override the verdict, answer in your own words why building it is unsafe.
-      values:
-        - value: allow
-          label: Let the agent build
-          description: The build is safe. The agent runs the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
-        - value: manual
-          label: Build it myself
-          description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
-    unsafe:
-      question: |-
-        The agent judged the build unsafe, for the issues listed in build-issues.md (SCA_BUILD_SAFETY_ISSUES in the Build Review Details). Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
-      values:
-        - value: skip
-          label: Trust the verdict, do not build
-          description: The build is unsafe. Nobody builds it, and the review reports each issue listed in build-issues.md to the developer as an unsafe build.
-        - value: override
-          label: Build anyhow
-          description: The build issues the agent found are cleared, and the build is safe. The agent runs the package-manager commands and the add-on's own build commands, as for a safe build.
+    question: |-
+      Let the agent build the add-on, including its package-manager commands, or build it yourself? To hold the build unsafe instead, answer in your own words why building it is unsafe.
+    values:
+      - value: allow
+        label: Let the agent build
+        description: The build is safe. The agent runs the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
+      - value: manual
+        label: Build it myself
+        description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
   # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
   # LLM_BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.

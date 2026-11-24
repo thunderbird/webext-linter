@@ -399,15 +399,17 @@ export function answerDecision(stdout, decision = "Build it myself") {
  * EXTRACT_TO, name the Experiment folder where `unpack` asks for it, and run the hand-back the
  * `unpack` prompt prints, then write the build report to SCA_BUILD_REPORT, answer ANSWERS (the
  * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
- * decision prompt, answer it too (the agent let build) and run its hand-back. The source is
- * NO_LOCK_SOURCE unless `source` names another: with no lock, the build check is done at
- * `analyze` and the review starts there.
+ * override-unsafe prompt, answer it (the verdict overridden unless `override` says otherwise)
+ * and run its hand-back. Where that prints the decision prompt, answer it too (the agent let
+ * build) and run its hand-back. The source is NO_LOCK_SOURCE unless `source` names another:
+ * with no lock, the build check is done at `analyze` and the review starts there.
  * @param {string} stdout  The --llm-auto-review run's output.
  * @param {{experimentsFolder?: string, typed?: (work: string) => string, safety?: string,
- *   managers?: string, source?: string}} [opts]  The Experiment folder to answer, relative to
- *   the root, for an add-on that declares Experiments, how the work folder is typed, where not
- *   as the prompt prints it, the agent's build judgement, the reviewer's answer to the
- *   decision question, and the source extracted.
+ *   override?: string, managers?: string, source?: string}} [opts]  The Experiment folder to
+ *   answer, relative to the root, for an add-on that declares Experiments, how the work folder
+ *   is typed, where not as the prompt prints it, the agent's build judgement, the reviewer's
+ *   answer to the override question, their answer to the decision question, and the source
+ *   extracted.
  * @returns {{code: number, stdout: string, stderr: string}}  The last hand-back's run.
  */
 export function handBackRoots(
@@ -416,6 +418,7 @@ export function handBackRoots(
     experimentsFolder,
     typed,
     safety = "safe",
+    override = "Continue building",
     managers = "Let the agent build",
     source,
   } = {}
@@ -443,7 +446,14 @@ export function handBackRoots(
       headerValue(unpacked.stdout, "SCA_SOURCE")
     ),
   });
-  const handed = handBack(unpacked.stdout);
+  let handed = handBack(unpacked.stdout);
+  if (
+    handed.code === 0 &&
+    readJson(work, "prepare").current.step === "override-unsafe"
+  ) {
+    fill({ SCA_BUILD_OVERRIDE: override });
+    handed = handBack(handed.stdout);
+  }
   if (
     handed.code !== 0 ||
     readJson(work, "prepare").current.step !== "decision"

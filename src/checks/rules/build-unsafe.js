@@ -1,8 +1,9 @@
-// SCA only: a build the reviewer judged unsafe to run, in the build check's build decision
-// (src/build-check/steps.js decision). It runs only then (`when: build-judged AND NOT
-// build-safe`), so it always reports. Where the reviewer gave reasons of their own, one
-// finding, anchored where the build checks anchor, carries them as its note. Where they
-// trusted the agent's verdict, each issue the build analysis listed is a finding of its own,
+// SCA only: a build the reviewer held unsafe to run in the build check, by skipping an unsafe
+// one (src/build-check/steps.js overrideUnsafe) or by reasons of their own at the build
+// decision (decision). It runs only then (`when: build-judged AND NOT build-safe`), so it
+// always reports. Where the reviewer gave reasons of their own, one finding, anchored where
+// the build checks anchor, carries them as its note. Where they skipped the build the agent
+// judged unsafe, each issue the build analysis listed is a finding of its own,
 // at its file and line in the extracted archive, with the agent's hint. With neither, the one
 // finding stands alone.
 // The review then goes on, and is aborted late with this check's reason and response.

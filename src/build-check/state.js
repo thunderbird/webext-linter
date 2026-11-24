@@ -46,12 +46,15 @@ import {
  *   with the build's issues handed back in the answers file. Every build check starts here,
  *   once the early-exit checks passed on the source in `sca/`. The next hand-back moves to
  *   `done` where a build-guard check is switched off. Otherwise it audits the package root's
- *   lock, and moves to `done` where the agent may build nothing from it, else either verdict
- *   on to `decision` (or, where the hot runs switched the agent's builds on, decides for the
- *   reviewer);
- * - `decision`: the reviewer is shown the Build Review Details and asked for the build
- *   decision, and the next hand-back reads it and, where the agent may build, goes on by the
- *   audit at `analyze`;
+ *   lock, and moves to `done` where the agent may build nothing from it, else a safe verdict
+ *   on to `decision` and an unsafe one on to `override-unsafe` (or, where the hot runs
+ *   switched the agent's builds on, decides for the reviewer);
+ * - `override-unsafe`: the verdict is unsafe, the reviewer is shown the Build Review Details
+ *   and asked whether to override it, and the next hand-back reads the answer: skipping the
+ *   build is done at once, overriding moves on to `decision`;
+ * - `decision`: the reviewer is shown the Build Review Details (unless `override-unsafe`
+ *   showed them) and asked for the build decision about a build held safe, and the next
+ *   hand-back reads it and, where the agent may build, goes on by the audit at `analyze`;
  * - `build`: the package root's lock is clean, the linter copies `sca/` into `build/`, and
  *   the agent builds it there and names what the build produced, or that it failed. The next
  *   hand-back compares what it named with the submitted XPI;
@@ -65,6 +68,7 @@ import {
  */
 export const BUILD_CHECK_STEP = Object.freeze({
   analyze: "analyze",
+  overrideUnsafe: "override-unsafe",
   decision: "decision",
   build: "build",
   rescue: "rescue",
@@ -98,13 +102,14 @@ const COUNTED = ["moderate", "high", "critical"];
  *   reaches for outside the declared dependencies, as the `analyze` hand-back read it, each
  *   at its file relative to the extracted archive (`sca/`), and null before it. Also in the
  *   work folder's build-issues.md, which the review links, and reported by build-unsafe where
- *   the reviewer trusts the verdict.
+ *   the reviewer skips the build at `override-unsafe`.
  * @property {?string} buildSafety  The verdict read off `buildIssues`, a BUILD_SAFETY_VALUES
  *   id, unsafe where it holds an entry, and null before it.
  *   The review starts with it as its build's judgement (state.build.safety).
- * @property {?boolean} buildSafe  The reviewer's one decision about the build, at the
- *   decision question: whether it is safe, the agent's verdict as they kept or overrode
- *   it (the hot runs' switch answering for them, src/build-check/steps.js
+ * @property {?boolean} buildSafe  The reviewer's one decision about the build: whether it is
+ *   safe, the agent's verdict as they kept it or, at `override-unsafe`, overrode it (an
+ *   unsafe verdict held safe is an overridden one), and false where they skipped it or gave
+ *   reasons of their own (the hot runs' switch answering for them, src/build-check/steps.js
  *   agentBuildsSwitchedOn). Null before it, and where a build-guard check
  *   is switched off or the audit found nothing the agent may build, which asks nothing. The review reads it as its `build-judged` and
  *   `build-safe` facts.
@@ -112,7 +117,7 @@ const COUNTED = ["moderate", "high", "critical"];
  *   where they answered the question with them, which build-unsafe reports. Held only
  *   where `buildSafe` is false.
  * @property {?boolean} packageManagers  Whether the agent may build the add-on and run its
- *   package-manager commands: true where the reviewer let it (`allow` or `override`), false
+ *   package-manager commands: true where the reviewer let it (`allow`), false
  *   for any other answer and where nothing was asked, and null before either. False, the
  *   build check audits and rescues nothing, and the agent builds nothing.
  * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The submitted
@@ -169,7 +174,20 @@ export function checkBuildCheck(record) {
         : "the build check's record holds buildSafety as no verdict its buildIssues give"
     );
   }
-  if (before || check.step === BUILD_CHECK_STEP.decision) {
+  // Asked only after an unsafe verdict.
+  if (
+    check.step === BUILD_CHECK_STEP.overrideUnsafe &&
+    check.buildSafety !== "unsafe"
+  ) {
+    throw recordError(
+      "the build check's record asks to override a verdict that is not unsafe"
+    );
+  }
+  if (
+    before ||
+    check.step === BUILD_CHECK_STEP.overrideUnsafe ||
+    check.step === BUILD_CHECK_STEP.decision
+  ) {
     for (const key of ["packageManagers", "buildSafe", "buildReasons"]) {
       if (check[key] !== null) {
         throw recordError(
@@ -269,9 +287,12 @@ function checkBuild(check, unaudited) {
     );
   }
   const counts = check.vulnerabilities;
-  // Unknown before the audit, known at the decision and while the agent builds, since only a
-  // lock the audit read in full gets there, and either once done.
-  const asked = building || check.step === BUILD_CHECK_STEP.decision;
+  // Unknown before the audit, known at both questions and while the agent builds, since only
+  // a lock the audit read in full gets there, and either once done.
+  const asked =
+    building ||
+    check.step === BUILD_CHECK_STEP.overrideUnsafe ||
+    check.step === BUILD_CHECK_STEP.decision;
   const countsHold = unaudited
     ? counts === null
     : isCounts(counts) || (!asked && counts === null);

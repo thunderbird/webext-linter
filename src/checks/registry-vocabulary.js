@@ -287,19 +287,23 @@ export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
 export const DOWNGRADE_PHASE = "downgrade";
 export const DOWNGRADE_RESTART = "xpi";
 
-/** The one fact the build check prompts' `when:` conditions can name: whether `unpack` asks
- *  its reader for the Experiment folder - the built add-on declares Experiments
- *  (src/build-check/steps.js asksExperiments). */
-export const SCA_PROMPT_FACTS = ["find-experiment"];
+/** The facts the build check prompts' `when:` conditions can name: whether `unpack` asks its
+ *  reader for the Experiment folder - the built add-on declares Experiments
+ *  (src/build-check/steps.js asksExperiments) - and whether the reviewer overrode an unsafe
+ *  verdict at `override-unsafe`, so `decision` does not show the Build Review Details a
+ *  second time. */
+export const SCA_PROMPT_FACTS = ["find-experiment", "build-overridden"];
 
 /** The prompts of modes unpack and build-check, one step list each, named for the step
  *  that prints it (src/build-check/state.js BUILD_CHECK_STEP): `unpack` where the agent
- *  extracts the source archive, `analyze` where the build is worked out, `decision` after
- *  the build judgement, then `build` for a lock audited clean or `rescue` for a vulnerable
- *  one. Once the build check is done, the hand-back starts the review instead. */
+ *  extracts the source archive, `analyze` where the build is worked out, `override-unsafe`
+ *  after an unsafe judgement, `decision` after a safe one or an overridden unsafe one, then
+ *  `build` for a lock audited clean or `rescue` for a vulnerable one. Once the build check is
+ *  done, the hand-back starts the review instead. */
 export const SCA_PROMPT_STEPS = [
   "unpack",
   "analyze",
+  "override-unsafe",
   "decision",
   "build",
   "rescue",
@@ -310,19 +314,19 @@ export const SCA_PROMPT_STEPS = [
  *  nowhere to go. */
 export const SCA_PROMPT_COMMAND = "{{flags}}";
 
+/** The values the build check's SCA_BUILD_OVERRIDE question accepts back, by id, asked after
+ *  an unsafe verdict only: nobody builds (`skip`), or the reviewer overrides the verdict and
+ *  goes on to the build decision as if the build were safe (`continue`). It takes no words
+ *  of the reviewer's own: it is only whether the verdict is overridden. Offered once each
+ *  (assertScaPrompt). */
+export const BUILD_OVERRIDE_VALUES = ["skip", "continue"];
+
 /** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
- *  reviewer's one decision about the build. After a safe verdict the agent builds (`allow`)
- *  or the reviewer does (`manual`), after an unsafe one nobody does (`skip`) or the agent
- *  builds anyhow (`override`). Each verdict's question offers its two once each
+ *  reviewer's one decision about a build held safe, by the verdict or by their override. The
+ *  agent builds (`allow`) or the reviewer does (`manual`). Offered once each
  *  (assertScaPrompt). An answer in the reviewer's own words is none of them: it holds the
  *  build unsafe, for the reasons it gives. */
-export const BUILD_DECISION_VALUES = ["allow", "manual", "skip", "override"];
-
-/** The BUILD_DECISION_VALUES each verdict's question offers. */
-export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
-  safe: ["allow", "manual"],
-  unsafe: ["skip", "override"],
-});
+export const BUILD_DECISION_VALUES = ["allow", "manual"];
 
 /** The verdicts the build check records of the build the agent reported, by id: read off the
  *  SCA_BUILD_SAFETY_ISSUES list the agent hands back, `unsafe` where it holds an entry

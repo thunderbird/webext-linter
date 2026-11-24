@@ -20,13 +20,14 @@
         the lock file, or do something they will not run on their machine. Nothing was built.
       </p>
       <p>
-        It runs only under <code>--llm-review</code>, where the reviewer makes one decision
-        about the build in the preparation, right after reading the agent's build report and
-        its verdict. After an unsafe verdict they may trust it and build nothing, or clear the
-        issues and let the agent build anyhow. After either verdict they may override it with
-        reasons of their own why building is unsafe. Where that decision holds the build unsafe
+        It runs only under <code>--llm-review</code>, where the reviewer decides about the
+        build in the build check, right after reading the agent's build report and its
+        verdict. After an unsafe verdict they are first asked whether to skip building, or to
+        override the verdict and continue as if the build were safe. A build held safe, by
+        the verdict or by that override, is then put to them as the build decision, where they
+        may still hold it unsafe for reasons of their own. Where the build is held unsafe
         (<code>when: build-judged AND NOT build-safe</code>), this check reports it, and nobody
-        is asked to build. Trusting the verdict reports each issue the build analysis listed in
+        is asked to build. Skipping the build reports each issue the build analysis listed in
         <code>build-issues.md</code>, at its file and line, with what the agent said it does.
         Reasons of their own report one finding carrying those reasons instead. Where nobody decided,
         <a href="build-review.html"><code>build-review</code></a> asks instead.
@@ -36,10 +37,12 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The agent's build report<br/>and its verdict"] --> Q{"The reviewer's<br/>build decision"}
-  Q -- "safe: let the agent build, or build it myself" --> OK([the build question follows])
-  Q -- "unsafe: build anyhow" --> OK
-  Q -- "unsafe: trust the verdict" --> ERR([ERROR: unsafe build process<br/>the review is aborted])
+  A["The agent's build report<br/>and its verdict"] --> V{"The verdict"}
+  V -- safe --> Q{"The reviewer's<br/>build decision"}
+  V -- unsafe --> O{"Override the verdict?"}
+  O -- "skip building" --> ERR([ERROR: unsafe build process<br/>the review is aborted])
+  O -- "continue building" --> Q
+  Q -- "let the agent build, or build it myself" --> OK([the build question follows])
   Q -- "their own reasons" --> ERR
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
@@ -48,6 +51,7 @@ flowchart TD
   class ERR err;
   class OK ok;
   class Q manual;
+  class O manual;
         </pre>
       </div>
 
@@ -66,8 +70,8 @@ flowchart TD
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/build-unsafe.js</code>, the preparation's
-        build decision (<code>src/prepare/steps.js</code>) and the entry in
+        Source of truth: <code>src/checks/rules/build-unsafe.js</code>, the build check's
+        override and build decision (<code>src/build-check/steps.js</code>) and the entry in
         <code>assets/registry.yaml</code>.
       </p>
     </main>

@@ -63,7 +63,8 @@ import {
   SCA_PROMPT_FACTS,
   SCA_PROMPT_STEPS,
   SCA_PROMPT_COMMAND,
-  BUILD_PERMISSION_BY_VERDICT,
+  BUILD_DECISION_VALUES,
+  BUILD_OVERRIDE_VALUES,
   REVIEW_PROMPT_FACTS,
   CHECK_FACTS,
 } from "./registry-vocabulary.js";
@@ -127,6 +128,13 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * the one answer it offers besides a path.
  * @typedef {{question: string, failed: {label: string, description: string}}}
  *   BuildOutputAsk
+ */
+
+/**
+ * A question the build check puts to the reviewer: its text, and the answers it offers, each
+ * by its id.
+ * @typedef {{question: string,
+ *   values: {value: string, label: string, description: string}[]}} BuildValueAsk
  */
 
 /**
@@ -829,11 +837,14 @@ export class Registry {
    * A step comes back with its `when` condition parsed, never filtered here: which steps a
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
    * `when: find-experiment` marks a step of `unpack` about the Experiment folder, printed only
-   * where the add-on declares Experiments.
+   * where the add-on declares Experiments, and `when: NOT build-overridden` a step of
+   * `decision` printed only where `override-unsafe` did not come first.
    *
-   * `buildDecision` is the reviewer's one decision about the build, which the decision
-   * prompt puts: per verdict, its text and the two answers it offers, each by its id
-   * (BUILD_PERMISSION_BY_VERDICT). Each step's {{maxNote}} is filled with the length a
+   * `buildOverride` is the question the override-unsafe prompt puts after an unsafe verdict:
+   * its text and the two answers it offers, each by its id (BUILD_OVERRIDE_VALUES).
+   * `buildDecision` is the reviewer's one decision about a build held safe, which the decision
+   * prompt puts: its text and the two answers it offers, each by its id
+   * (BUILD_DECISION_VALUES). Each step's {{maxNote}} is filled with the length a
    * reviewer's own words are held to, and {{maxHint}} with the length of an issue's hint. The
    * analyze prompt's {{issueShape}} is a block filled where it is printed, with the shape of
    * one issue in SCA_SOURCE, the one the hand-back holds them to (src/report/format.js
@@ -843,19 +854,19 @@ export class Registry {
    * the linter's own comparison, asked of nobody.
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
-   *   buildDecision: Record<"safe"|"unsafe", {question: string,
-   *     values: {value: string, label: string, description: string}[]}>,
+   *   buildOverride: BuildValueAsk, buildDecision: BuildValueAsk,
    *   buildOutput: BuildOutputAsk, rescueOutput: BuildOutputAsk}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
-    const decision = p["build-decision"];
-    const values = (list) =>
-      list.map(({ value, label, description }) => ({
+    const asked = ({ question, values }) => ({
+      question,
+      values: values.map(({ value, label, description }) => ({
         value,
         label,
         description,
-      }));
+      })),
+    });
     const output = ({ question, failed }) => ({
       question,
       failed: { label: failed.label, description: failed.description },
@@ -876,15 +887,8 @@ export class Registry {
           }),
         ])
       ),
-      buildDecision: Object.fromEntries(
-        Object.keys(BUILD_PERMISSION_BY_VERDICT).map((verdict) => [
-          verdict,
-          {
-            question: decision[verdict].question,
-            values: values(decision[verdict].values),
-          },
-        ])
-      ),
+      buildOverride: asked(p["build-override"]),
+      buildDecision: asked(p["build-decision"]),
       buildOutput: output(p["build-output"]),
       rescueOutput: output(p["rescue-output"]),
     };
@@ -1939,13 +1943,10 @@ export function assertScaPrompt(registry, at) {
   }
   // Every answer is read as one of its ids, so each is offered once, under a label of its
   // own: a missing one could not be chosen, and two equal labels would read as either.
-  for (const [key, values, ids] of Object.entries(
-    BUILD_PERMISSION_BY_VERDICT
-  ).map(([verdict, ids]) => [
-    `build-decision\` \`${verdict}`,
-    prompt["build-decision"][verdict].values,
-    ids,
-  ])) {
+  for (const [key, values, ids] of [
+    ["build-override", prompt["build-override"].values, BUILD_OVERRIDE_VALUES],
+    ["build-decision", prompt["build-decision"].values, BUILD_DECISION_VALUES],
+  ]) {
     const stray = values.find((v) => !ids.includes(v.value));
     if (stray) {
       throw new Error(

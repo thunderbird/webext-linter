@@ -437,6 +437,54 @@ test("a safe build prints the Build Review Details and the decision question", (
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// An unsafe build shows the Build Review Details once, at the override question, and puts that
+// question first. Overridden, the decision prompt asks its question without the block: the
+// reviewer has read it already.
+test("an unsafe build prints the Build Review Details once, then the override and the decision", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const sca = headerValue(r.stdout, "EXTRACT_TO");
+  fs.cpSync(LOCKED_SOURCE, sca, { recursive: true });
+  const analyze = run(argvOf(commandOf(r.stdout)));
+  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  answer(work, {
+    SCA_BUILD_SAFETY_ISSUES: [
+      { file: "package.json", line: 1, hint: "runs a script it downloads" },
+    ],
+  });
+  writeBuildReport(work);
+  const override = run(argvOf(commandOf(analyze.stdout)));
+  assert.equal(override.code, 0, override.stdout + override.stderr);
+  assert.equal(readJson(work, "state").current.step, "override-unsafe");
+  const assessed = "* SCA_BUILD_SAFETY_ASSESSMENT: unsafe";
+  assert.ok(override.stdout.includes(assessed), override.stdout);
+  assert.ok(
+    override.stdout.indexOf(assessed) <
+      override.stdout.indexOf("SCA_BUILD_OVERRIDE"),
+    "the block comes before the question"
+  );
+  assert.ok(!override.stdout.includes("SCA_BUILD_DECISION"));
+  answer(work, { SCA_BUILD_OVERRIDE: "Continue building" });
+  const decision = run(argvOf(commandOf(override.stdout)));
+  assert.equal(decision.code, 0, decision.stdout + decision.stderr);
+  assert.equal(readJson(work, "state").current.step, "decision");
+  assert.ok(decision.stdout.includes("SCA_BUILD_DECISION"), decision.stdout);
+  assert.ok(
+    !decision.stdout.includes(assessed),
+    "the block is not shown again"
+  );
+  answer(work, {});
+  const started = run(argvOf(commandOf(decision.stdout)));
+  assert.notEqual(started.code, 2, started.stdout + started.stderr);
+  const record = readJson(work, "state");
+  assert.equal(record.current.step, "build");
+  assert.equal(record.current.buildSafety, "unsafe");
+  assert.equal(record.current.buildSafe, true, "the verdict overridden");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // The agent-builds test switch answers the decision question up front where `analyze`
 // would ask it: the safe build, its lock audited clean, goes straight on to the agent's build,
 // with no question put. It is a test concern, read where it is used and never recorded, so the
@@ -508,7 +556,7 @@ test("an issue above the package root is reported at its own place in the archiv
   writeBuildReport(work);
   const asked = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
-  answer(work, { SCA_BUILD_DECISION: "Trust the verdict, do not build" });
+  answer(work, { SCA_BUILD_OVERRIDE: "Skip building" });
   const started = run(argvOf(commandOf(asked.stdout)));
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
   const unsafe = readJson(work, "state").current.report.findings.filter(
@@ -524,14 +572,15 @@ test("an issue above the package root is reported at its own place in the archiv
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An unsafe verdict is put to the reviewer. Trusted, or overridden by reasons of their own,
-// the review starts at once with nothing built: it holds build-unsafe, with those reasons as
-// its note, and asks no build question. Overridden with "Build anyhow", the agent may build.
+// An unsafe verdict is put to the reviewer. Skipped at the override question, or overridden and
+// then held unsafe by reasons of their own at the decision, the review starts at once with
+// nothing built: it holds build-unsafe, with those reasons as its note, and asks no build
+// question.
 test("an unsafe build is reported where the reviewer holds it unsafe", () => {
   const words = "It downloads a binary from a host nobody pinned.";
-  for (const [managers, reasons] of [
-    ["Trust the verdict, do not build", null],
-    [words, words],
+  for (const [override, managers, reasons] of [
+    ["Skip building", undefined, null],
+    ["Continue building", words, words],
   ]) {
     const dir = submissionFolder();
     const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
@@ -539,6 +588,7 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     const work = workOf(r.stdout);
     const handed = handBackRoots(r.stdout, {
       safety: "unsafe",
+      override,
       managers,
       source: LOCKED_SOURCE,
     });
@@ -555,11 +605,11 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     const unsafe = state.report.findings.filter(
       (f) => f.ruleId === "build-unsafe"
     );
-    assert.equal(unsafe.length, 1, managers);
+    assert.equal(unsafe.length, 1, override);
     assert.equal(unsafe[0].note, reasons);
     // The reviewer's decision, which verify never audits.
-    assert.equal(unsafe[0].llmVerification, false, managers);
-    assert.ok(!(unsafe[0].ref in state.answers), managers);
+    assert.equal(unsafe[0].llmVerification, false, override);
+    assert.ok(!(unsafe[0].ref in state.answers), override);
     // Trusted, the finding is the agent's issue, at its locus with its hint. The reviewer's
     // own words override it, at the build's anchor.
     assert.deepEqual(
@@ -567,7 +617,7 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
       reasons === null
         ? [UNSAFE_ISSUE.file, UNSAFE_ISSUE.line, UNSAFE_ISSUE.hint]
         : ["package.json", null, null],
-      managers
+      override
     );
     assert.match(
       fs.readFileSync(workPaths(work).buildIssues, "utf8"),
