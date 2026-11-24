@@ -1440,8 +1440,10 @@ deterministic-phase:
 
 # SCA only: the build question of an agent review whose reviewer judged the build safe in the
 # build check and built it themselves (`when: build-judged AND build-safe AND NOT
-# build-attempted`). Where the agent built it, the linter's comparison answers it, or
-# build-not-reproduced-confirm asks. Reproducing the build is the reviewer's attestation that
+# build-attempted AND NOT vulnerable-build-skipped`). Where the agent built it, the linter's
+# comparison answers it, or build-not-reproduced-confirm asks. Where the reviewer skipped the
+# build of a vulnerable lock, nobody built it, so nothing is asked, and the vulnerabilities
+# end the review. Reproducing the build is the reviewer's attestation that
 # the shipped XPI comes from the source they read, which is what an SCA review rests on. So a
 # source that does not build into the shipped XPI ends the review before anyone is asked to
 # install that XPI. Asked ALONE, in a phase of its own (`asked-in: built`), right after the
@@ -1457,7 +1459,7 @@ deterministic-phase:
   llm-verification: false
   review-downgrade: true
   input: sca
-  when: build-judged AND build-safe AND NOT build-attempted
+  when: build-judged AND build-safe AND NOT build-attempted AND NOT vulnerable-build-skipped
   asked-in: built
   review-late-exit: unreproducible-build
   instructions-for-human: |-
@@ -2901,16 +2903,17 @@ llm-sca-review-prompt:
   # The reviewer's one decision about a build held safe, by the verdict or by their override, as
   # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). Its answers
   # follow the audit at `analyze`: for a lock with a high or critical advisory
-  # (`build-vulnerable`) the agent tries to rescue it (`rescue`), for any other it builds the
-  # lock as submitted (`allow`), and either way the reviewer may build it themselves, worded for
-  # each (`manual` for a clean lock, `manual-vulnerable` for one whose vulnerabilities then end
-  # the review). An answer is the label of one of the answers offered, or the reviewer's own
-  # words: the build is unsafe, for the reasons they give, and build-unsafe reports it. `allow`
-  # and `rescue` let the agent build, and both `manual` answers leave the build to the
-  # reviewer, whom the `built` question asks of their own build.
+  # (`build-vulnerable`) the agent tries to rescue it (`rescue`), or nobody builds it
+  # (`skip-vulnerable`, recorded as `vulnerableBuildSkipped`), so no build question is raised
+  # and the vulnerabilities end the review. For any other lock the agent builds it as submitted
+  # (`allow`), or the reviewer builds it themselves (`manual`). An answer is the label of one
+  # of the answers offered, or the reviewer's own words: the build is unsafe, for the reasons
+  # they give, and build-unsafe reports it. `allow` and `rescue` let the agent build, and
+  # `manual` leaves the build to the reviewer, whom the `built` question asks of their own
+  # build.
   build-decision:
     question: |-
-      Let the agent build the add-on, including its package-manager commands, or build it yourself? To hold the build unsafe instead, answer in your own words why building it is unsafe.
+      How should the add-on be built? To hold the build unsafe instead, answer in your own words why building it is unsafe.
     values:
       - value: rescue
         label: Let the agent try to rescue and build
@@ -2924,9 +2927,9 @@ llm-sca-review-prompt:
         label: Build it myself
         description: The agent runs none of its commands. You build the add-on yourself and answer the build question from your own build.
         when: NOT build-vulnerable
-      - value: manual-vulnerable
-        label: Build it myself
-        description: The agent runs none of its commands, so nothing is rescued. You build the add-on yourself and answer the build question from your own build, and the known high or critical vulnerabilities in the lock end the review.
+      - value: skip-vulnerable
+        label: Skip building for the known vulnerabilities
+        description: Nobody builds the add-on, and the known high or critical vulnerabilities in the lock end the review.
         when: build-vulnerable
   # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
@@ -3111,14 +3114,16 @@ llm-phases:
       downgrade: the question whether the review should be restarted as a pure XPI review
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
   # add-on, its build failed, its rescue failed so nothing was built, its rescued build did not
-  # reproduce the XPI so the source is reviewed as submitted, or the build was judged unsafe
-  # so nothing was built. The row is shown only for these five results. A rescue that failed
+  # reproduce the XPI so the source is reviewed as submitted, the reviewer skipped the build of
+  # a vulnerable lock, or the build was judged unsafe so nothing was built. The row is shown
+  # only for these six results. A rescue that failed
   # or did not reproduce leaves nothing to build (`unbuildable`), so no `built` step names it.
   build-results:
     agent-built: build succeeded
     agent-build-failed: "build failed: see build.md"
     rescue-failed: "not built: rescue failed"
     rescue-mismatch: "not reviewed as rescued: its build does not reproduce the XPI"
+    vulnerable-build-skipped: "not built: skipped for known vulnerabilities"
     build-unsafe: "not built: unsafe"
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same

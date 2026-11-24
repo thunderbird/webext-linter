@@ -653,7 +653,7 @@ test("a safe build is audited, then asks the reviewer's decision", async () => {
   assert.deepEqual(rest, []);
   assert.equal(managers.index, "SCA_BUILD_DECISION");
   assert.equal(managers.answer, null);
-  assert.ok(managers.message.startsWith("Let the agent build the add-on"));
+  assert.ok(managers.message.startsWith("How should the add-on be built?"));
   assert.deepEqual(
     managers.answers.map((a) => a.label),
     ["Let the agent build", "Build it myself"]
@@ -742,9 +742,11 @@ test("the override of an unsafe build records what the reviewer answered", async
 // plain build's label, which this build is not offered, is refused rather than read as the
 // reviewer's own words, with nothing changed.
 test("a vulnerable lock's decision offers the rescue, not the plain build", async () => {
-  const labels = (work) =>
-    reviewEntries(work)[0].answers.map((a) => a.label);
-  const RESCUE = ["Let the agent try to rescue and build", "Build it myself"];
+  const labels = (work) => reviewEntries(work)[0].answers.map((a) => a.label);
+  const RESCUE = [
+    "Let the agent try to rescue and build",
+    "Skip building for the known vulnerabilities",
+  ];
   const vulnerable = () =>
     workFolder(
       { "package.json": packageFile(), "package-lock.json": npmLock() },
@@ -823,30 +825,36 @@ test("continuing an unsafe build names the rescue for a vulnerable lock", async 
   cleanup(vulnerable.work);
 });
 
-// "Build it myself" is worded by the audit too: for a clean lock it says only that the
-// reviewer builds, for a vulnerable one that nothing is rescued and the vulnerabilities end
-// the review. Chosen on a vulnerable lock it holds the build safe, lets the agent build
-// nothing, and the folder is done.
-test("building it yourself is worded by the lock's audit", async () => {
-  const built = (work) =>
-    reviewEntries(work)[0].answers.find((a) => a.label === "Build it myself")
-      .description;
+// The reviewer's other answer follows the audit: a clean lock offers "Build it myself", which
+// says nothing of a rescue, and a vulnerable one offers to skip the build, since the
+// vulnerabilities end the review whatever a build gives. Skipped, the build is held safe,
+// nobody builds it, the folder is done with no result, and the skip is recorded as the
+// reviewer's decision, which the review reads to raise no build question.
+test("the reviewer's other answer is worded by the lock's audit", async () => {
+  const SKIP = "Skip building for the known vulnerabilities";
+  const labelled = (work, label) =>
+    reviewEntries(work)[0].answers.find((a) => a.label === label)?.description;
   const clean = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { vulns: TOOL_CLEAN }
   );
   await analyzeStep(clean);
-  assert.ok(!built(clean).includes("rescued"), built(clean));
-  assert.ok(!built(clean).includes("vulnerabilities"), built(clean));
+  const built = labelled(clean, "Build it myself");
+  assert.ok(!built.includes("rescued"), built);
+  assert.ok(!built.includes("vulnerabilities"), built);
+  assert.equal(labelled(clean, SKIP), undefined);
   cleanup(clean);
   const vulnerable = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { vulns: TOOL_HIGH }
   );
   await analyzeStep(vulnerable);
-  assert.match(built(vulnerable), /nothing is rescued/);
-  assert.match(built(vulnerable), /vulnerabilities in the lock end the review/);
-  answer(vulnerable, { SCA_BUILD_DECISION: "Build it myself" });
+  assert.equal(labelled(vulnerable, "Build it myself"), undefined);
+  assert.match(
+    labelled(vulnerable, SKIP),
+    /Nobody builds the add-on, and the known high or critical vulnerabilities in the lock end the review/
+  );
+  answer(vulnerable, { SCA_BUILD_DECISION: SKIP });
   const at = await stepOn(vulnerable);
   assert.equal(at.next, "review");
   const { packageManagers, buildSafe, buildResult, step } = at.record.current;
@@ -854,6 +862,8 @@ test("building it yourself is worded by the lock's audit", async () => {
     [packageManagers, buildSafe, buildResult, step],
     [false, true, null, BUILD_CHECK_STEP.done]
   );
+  assert.equal(at.record.current.vulnerableBuildSkipped, true);
+  assert.ok(!fs.existsSync(workPaths(vulnerable).buildCopy), "nothing built");
   cleanup(vulnerable);
 });
 
@@ -1125,7 +1135,9 @@ test("not letting the agent build is done at once, with nothing built", async ()
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { vulns: TOOL_HIGH }
   );
-  const at = await first(work, { SCA_BUILD_DECISION: "Build it myself" });
+  const at = await first(work, {
+    SCA_BUILD_DECISION: "Skip building for the known vulnerabilities",
+  });
   assert.equal(at.next, "review");
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.done);
   assert.equal(at.record.current.packageManagers, false);
@@ -1340,7 +1352,10 @@ test("the experiment-folder hand-back reads the Experiment folder as an absolute
   assert.deepEqual(experimentFolderEntries(asking(false)), []);
   assert.equal(namedExperimentFolder(work, asking(false)), undefined);
   const record = asking(true);
-  writeReviewFile(workPaths(work).answers, reviewFile(experimentFolderEntries(record)));
+  writeReviewFile(
+    workPaths(work).answers,
+    reviewFile(experimentFolderEntries(record))
+  );
   assert.deepEqual(reviewEntries(work), [
     { index: "SCA_EXPERIMENTS", answer: null },
   ]);
@@ -2172,6 +2187,40 @@ test("a build record the linter would not write cannot be carried on", async (t)
       (r) => ({ ...r, packageManagers: false }),
       "builds where the agent may not build",
     ],
+    ...[
+      [
+        "a skip that is no boolean",
+        (r) => ({ ...r, vulnerableBuildSkipped: "yes" }),
+      ],
+      [
+        "a skip while the agent builds",
+        (r) => ({ ...r, vulnerableBuildSkipped: true }),
+      ],
+      [
+        "a skip of a clean lock",
+        (r) => ({
+          ...r,
+          step: BUILD_CHECK_STEP.done,
+          packageManagers: false,
+          vulnerableBuildSkipped: true,
+          vulnerabilities: NONE,
+        }),
+      ],
+      [
+        "a skip of a build held unsafe",
+        (r) => ({
+          ...r,
+          step: BUILD_CHECK_STEP.done,
+          packageManagers: false,
+          buildSafe: false,
+          vulnerableBuildSkipped: true,
+        }),
+      ],
+    ].map(([name, edit]) => [
+      name,
+      edit,
+      "holds vulnerableBuildSkipped where the reviewer could not have skipped the build of a vulnerable lock",
+    ]),
   ];
   for (const [name, edit, problem] of cases) {
     await t.test(name, async () => {

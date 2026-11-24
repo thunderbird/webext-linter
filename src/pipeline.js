@@ -310,6 +310,9 @@ export function selectionOf(opts, ctx, build) {
     buildAttempted: Object.values(BUILD_RESULT).includes(build?.result),
     buildReproduced:
       build?.result === BUILD_RESULT.built && build?.match === "match",
+    // The reviewer skipped the build of a vulnerable lock: nobody built it, so no build
+    // question is raised, and the vulnerabilities end the review.
+    vulnerableBuildSkipped: build?.vulnerableBuildSkipped === true,
   };
 }
 

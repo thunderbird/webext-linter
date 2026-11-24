@@ -169,14 +169,16 @@ export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 /** The build results that report the agent's attempt: it built the add-on in the
  *  build check (`agent-built`), its build failed (`agent-build-failed`), its rescue failed so
  *  nothing was built (`rescue-failed`), its rescued build did not reproduce the XPI so the
- *  source is reviewed as submitted (`rescue-mismatch`), or the build was judged unsafe so
- *  nothing was built (`build-unsafe`). The details blocks word exactly these in their
+ *  source is reviewed as submitted (`rescue-mismatch`), the reviewer skipped the build of a
+ *  vulnerable lock (`vulnerable-build-skipped`), or the build was judged unsafe so nothing was
+ *  built (`build-unsafe`). The details blocks word exactly these in their
  *  LLM_BUILD_RESULT row (`build-results`, assets/registry.yaml). */
 export const WORDED_BUILD_FACTS = [
   "agent-built",
   "agent-build-failed",
   "rescue-failed",
   "rescue-mismatch",
+  "vulnerable-build-skipped",
   "build-unsafe",
 ];
 
@@ -200,7 +202,9 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *    `failed`, `rescue-failed` or `rescue-mismatch`), exactly where the review loop's build
  *    result is not `self-build`;
  *  - `build-reproduced`: the agent built it, and the linter's comparison of what it built
- *    with the submitted XPI matched (src/build-check/steps.js xpiMatch).
+ *    with the submitted XPI matched (src/build-check/steps.js xpiMatch);
+ *  - `vulnerable-build-skipped`: the reviewer skipped the build of a lock the audit found
+ *    vulnerable (`skip-vulnerable`), so nobody built it.
  *
  *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
  *  check's findings do not depend on them. */
@@ -211,6 +215,7 @@ export const CHECK_FACTS = [
   "build-safe",
   "build-attempted",
   "build-reproduced",
+  "vulnerable-build-skipped",
 ];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
@@ -339,20 +344,25 @@ export const SCA_PROMPT_COMMAND = "{{flags}}";
  *  vulnerable lock as `continue-vulnerable`, by its `when:`). It takes no words of the
  *  reviewer's own: it is only whether the verdict is overridden. Each id is authored once
  *  (assertScaPrompt). */
-export const BUILD_OVERRIDE_VALUES = ["skip", "continue", "continue-vulnerable"];
+export const BUILD_OVERRIDE_VALUES = [
+  "skip",
+  "continue",
+  "continue-vulnerable",
+];
 
 /** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
  *  reviewer's one decision about a build held safe, by the verdict or by their override. The
- *  agent builds a clean lock (`allow`), or tries to rescue a vulnerable one and build it
- *  (`rescue`), or the reviewer builds it, worded for a clean lock (`manual`) or a vulnerable
- *  one (`manual-vulnerable`), each offered only where the audit says so (its `when:`). Each id
+ *  agent builds a clean lock (`allow`), or the reviewer builds it (`manual`). The agent tries
+ *  to rescue a vulnerable one and build it (`rescue`), or nobody builds it
+ *  (`skip-vulnerable`, recorded as `vulnerableBuildSkipped`). Each is offered only where the audit
+ *  says so (its `when:`). Each id
  *  is authored once (assertScaPrompt). An answer in the reviewer's own words is none of them:
  *  it holds the build unsafe, for the reasons it gives. */
 export const BUILD_DECISION_VALUES = [
   "allow",
   "rescue",
   "manual",
-  "manual-vulnerable",
+  "skip-vulnerable",
 ];
 
 /** The verdicts the build check records of the build the agent reported, by id: read off the

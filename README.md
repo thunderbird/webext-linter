@@ -264,9 +264,10 @@ may hold the real source beside the copy.
     After an unsafe verdict they first skip building, or override the verdict and continue
     as if the build were safe. A build held safe is then put to them as the build decision:
     they let the agent build or build it themselves, or hold it unsafe for reasons of their
-    own. Where the lock has a high or critical advisory, the agent's answer is to try to
-    rescue the build: in a copy, it removes the dependencies the release build does not use
-    and updates the rest to fixed releases. The rescue counts only where its build
+    own. Where the lock has a high or critical advisory, they let the agent try to rescue the
+    build, or skip it for the known vulnerabilities, which then end the review with no build
+    question asked. The rescue, in a copy, removes the dependencies the release build does
+    not use and updates the rest to fixed releases. It counts only where its build
     reproduces the shipped XPI, since only then did none of the vulnerable code ship.
   - Where the agent built it, the linter compares its build with the shipped XPI itself. A
     match answers the build question, and nobody is asked.
@@ -321,7 +322,8 @@ A section it never asks for is inert.
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
   check may carry a `when:` condition for what a route cannot say, over the facts known
   before any check runs (`sca`, `eslint`, `build-judged`, `build-safe`,
-  `build-attempted`, `build-reproduced`), in the syntax the loop's steps use:
+  `build-attempted`, `build-reproduced`, `vulnerable-build-skipped`), in the syntax the
+  loop's steps use:
   `when: NOT sca` keeps the two that judge the shipped XPI's own lock out of a source review,
   `when: eslint` runs `code-sanity` only under `--eslint`, and the reviewer's build decision
   and what came of the agent's build pick which of `build-review`, `build-reproduces-xpi`,

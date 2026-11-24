@@ -140,7 +140,8 @@ function walkOrder(settled) {
 /**
  * What came of the build, as the one BUILD_RESULT_FACTS name that holds: the agent's build
  * as the build check recorded it (`agent-built`, `agent-build-failed`, `rescue-failed`,
- * `rescue-mismatch`), else
+ * `rescue-mismatch`), else a vulnerable lock's build the reviewer skipped
+ * (`vulnerable-build-skipped`), which nobody builds, else
  * a build the reviewer held unsafe in the build check (`build-unsafe`), which nothing builds,
  * else a build the reviewer makes (`self-build`): the agent was not let build, or nothing was
  * checked. Read off the build results the record's permanent part holds (`build`).
@@ -160,6 +161,9 @@ export function buildResultFact(record) {
   }
   if (result === BUILD_RESULT.rescueMismatch) {
     return "rescue-mismatch";
+  }
+  if (record.build?.vulnerableBuildSkipped === true) {
+    return "vulnerable-build-skipped";
   }
   return record.build?.safe === false ? "build-unsafe" : "self-build";
 }

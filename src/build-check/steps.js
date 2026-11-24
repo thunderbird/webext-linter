@@ -604,8 +604,10 @@ function decision(work, record, prompt) {
 /**
  * The reviewer's build decision, recorded: whether the build is safe, and whether the agent
  * builds it (`allow` and `rescue`), which `permitted` goes on from: the audit routes a clean
- * lock to the build and a vulnerable one to the rescue. Both `manual` answers hold the build
- * safe and leave it to the reviewer. `skip` is the override-unsafe step's, which holds the
+ * lock to the build and a vulnerable one to the rescue. `manual` holds the build safe and
+ * leaves it to the reviewer. `skip-vulnerable` holds it safe and lets nobody build it
+ * (`vulnerableBuildSkipped`), since the lock's vulnerabilities end the review whatever a
+ * build gives. `skip` is the override-unsafe step's, which holds the
  * build unsafe. Their own words are no id, and hold the build unsafe for those reasons.
  * @param {string} work
  * @param {object} record  Audited at `analyze`.
@@ -620,10 +622,9 @@ function decided(work, record, id, reasons, prompt) {
     work,
     movedOn(record, {
       packageManagers: id === "allow" || id === "rescue",
-      buildSafe: ["allow", "rescue", "manual", "manual-vulnerable"].includes(
-        id
-      ),
+      buildSafe: ["allow", "rescue", "manual", "skip-vulnerable"].includes(id),
       buildReasons: reasons,
+      vulnerableBuildSkipped: id === "skip-vulnerable",
     }),
     prompt
   );

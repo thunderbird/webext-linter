@@ -952,8 +952,9 @@ test("where a check runs: the route says it, or the condition says what a route 
   // decided (a plain report, or an agent review with a build-guard check off),
   // build-reproduces-xpi where they held the build safe and built it themselves,
   // build-not-reproduced-confirm where the agent's build did not match or failed, and
-  // build-unsafe where they held it unsafe. At most one runs, and none where the agent's
-  // build matched: the linter answered the question itself.
+  // build-unsafe where they held it unsafe. At most one runs, none where the agent's build
+  // matched (the linter answered the question itself), and none where the reviewer skipped
+  // the build of a vulnerable lock.
   const questions = [
     "build-review",
     "build-reproduces-xpi",
@@ -974,10 +975,12 @@ test("where a check runs: the route says it, or the condition says what a route 
       { ...safe, buildAttempted: true, buildReproduced: true },
       null,
     ],
+    ["held unsafe", { buildJudged: true, buildSafe: false }, "build-unsafe"],
+    // Nobody builds a vulnerable lock the reviewer skipped, so no build question is raised.
     [
-      "held unsafe",
-      { buildJudged: true, buildSafe: false },
-      "build-unsafe",
+      "skipped for vulnerabilities",
+      { ...safe, vulnerableBuildSkipped: true },
+      null,
     ],
   ]) {
     const facts = checkFacts({ sca: true, ...decision });
@@ -1053,7 +1056,12 @@ test("the build question and its answers name the same build", () => {
       "build-not-reproduced-confirm",
       AGENT,
     ],
-    ["agent built, match", { safe: true, result: "built", match: "match" }, null, null],
+    [
+      "agent built, match",
+      { safe: true, result: "built", match: "match" },
+      null,
+      null,
+    ],
   ]) {
     const facts = checkFacts(selectionOf({}, { mode: { sca: true } }, build));
     assert.deepEqual(

@@ -864,8 +864,8 @@ test("the details name the source copy, the rescued copy and the build copy", ()
 });
 
 // LLM_BUILD_RESULT reports the agent's attempt, one wording per build result: the agent built
-// it, its build failed, its rescue failed, or the reviewer held the build unsafe so nothing
-// was built. Where the reviewer builds it (the agent was not let build, or nothing was checked)
+// it, its build failed, its rescue failed, the reviewer skipped the build of a vulnerable lock,
+// or the reviewer held the build unsafe so nothing was built. Where the reviewer builds it (the agent was not let build, or nothing was checked)
 // the row is absent.
 test("the build result is worded by what came of the agent's attempt", () => {
   const made = scaReview(tmp());
@@ -883,6 +883,11 @@ test("the build result is worded by what came of the agent's attempt", () => {
       { result: "rescue-mismatch" },
       true,
       "not reviewed as rescued: its build does not reproduce the XPI",
+    ],
+    [
+      { result: null, vulnerableBuildSkipped: true },
+      true,
+      "not built: skipped for known vulnerabilities",
     ],
     [undefined, undefined, null],
   ];

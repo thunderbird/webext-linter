@@ -1988,8 +1988,8 @@ export function assertScaPrompt(registry, at) {
   // be chosen. What one build is offered is checked per build, over every combination of the
   // facts these prompts know: at least one answer, so the question never asks with nothing to
   // answer, and each under a label of its own, since two equal labels would read as either.
-  // Two answers that are never offered together may share a label (`manual` and
-  // `manual-vulnerable`, both "Build it myself").
+  // Two answers that are never offered together may share a label (`continue` and
+  // `continue-vulnerable`, both "Continue building").
   const builds = SCA_PROMPT_FACTS.reduce(
     (sets, fact) => sets.flatMap((s) => [s, new Set([...s, fact])]),
     [new Set()]
@@ -2489,6 +2489,8 @@ export function checkSelected(registry, id, { only, skip } = {}) {
  *   build, the `build-attempted` fact.
  * @param {boolean} [opts.buildReproduced]  The agent built it and the linter's comparison
  *   with the submitted XPI matched, the `build-reproduced` fact.
+ * @param {boolean} [opts.vulnerableBuildSkipped]  The reviewer skipped the build of a vulnerable
+ *   lock, the `vulnerable-build-skipped` fact.
  *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
  *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
@@ -2504,6 +2506,7 @@ export async function loadChecks(
     buildSafe,
     buildAttempted,
     buildReproduced,
+    vulnerableBuildSkipped,
   } = {}
 ) {
   const facts = checkFacts({
@@ -2513,6 +2516,7 @@ export async function loadChecks(
     buildSafe,
     buildAttempted,
     buildReproduced,
+    vulnerableBuildSkipped,
   });
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
@@ -2654,7 +2658,8 @@ export function conditionEligible(entry, facts) {
 /**
  * The facts a check's condition reads in a run: each of CHECK_FACTS that holds.
  * @param {{sca?: boolean, eslint?: boolean, buildJudged?: boolean, buildSafe?: boolean,
- *   buildAttempted?: boolean, buildReproduced?: boolean}} run
+ *   buildAttempted?: boolean, buildReproduced?: boolean,
+ *   vulnerableBuildSkipped?: boolean}} run
  * @returns {Set<string>}
  */
 export function checkFacts({
@@ -2664,6 +2669,7 @@ export function checkFacts({
   buildSafe,
   buildAttempted,
   buildReproduced,
+  vulnerableBuildSkipped,
 } = {}) {
   return new Set(
     [
@@ -2673,6 +2679,7 @@ export function checkFacts({
       buildSafe ? "build-safe" : null,
       buildAttempted ? "build-attempted" : null,
       buildReproduced ? "build-reproduced" : null,
+      vulnerableBuildSkipped ? "vulnerable-build-skipped" : null,
     ].filter(Boolean)
   );
 }

@@ -34,6 +34,7 @@ import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 import { checkedNote } from "../report/verdicts.js";
 import { recordError } from "../lib/errors.js";
+import { countsVulnerable } from "./audit.js";
 import {
   BUILD_MATCH_VALUES,
   BUILD_SAFETY_VALUES,
@@ -124,6 +125,11 @@ const COUNTED = ["moderate", "high", "critical"];
  *   package-manager commands: true where the reviewer let it (`allow`), false
  *   for any other answer and where nothing was asked, and null before either. False, the
  *   build check audits and rescues nothing, and the agent builds nothing.
+ * @property {boolean} vulnerableBuildSkipped  Whether the reviewer skipped the build of a lock
+ *   the audit found vulnerable (`skip-vulnerable`): the build held safe, and nobody builds it,
+ *   since its vulnerabilities end the review whatever a build gives. True only in a done
+ *   record whose agent may not build and whose agent built nothing. The review reads it as its
+ *   `vulnerable-build-skipped` fact, which raises no build question.
  * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The submitted
  *   lock's vulnerable packages, counted by severity as the linter's first audit found them.
  *   Held from `build` and `rescue` on, never replaced, and null where the lock was never
@@ -351,6 +357,26 @@ function checkBuild(check, unaudited) {
         : "the build check's record holds buildMatch as no comparison the linter writes"
     );
   }
+  // The reviewer's skip of a vulnerable lock's build: a decision, held only where it was
+  // made, a done record holding the build safe whose agent may not build, built nothing, and
+  // whose lock the audit counted vulnerable.
+  const skipped = check.vulnerableBuildSkipped;
+  if (
+    typeof skipped !== "boolean" ||
+    (skipped &&
+      !(
+        done &&
+        check.buildSafe === true &&
+        check.packageManagers === false &&
+        result === null &&
+        isCounts(counts) &&
+        countsVulnerable(counts)
+      ))
+  ) {
+    throw recordError(
+      "the build check's record holds vulnerableBuildSkipped where the reviewer could not have skipped the build of a vulnerable lock"
+    );
+  }
 }
 
 /**
@@ -432,6 +458,7 @@ export function buildCheckBody(roots) {
     buildSafe: null,
     buildReasons: null,
     packageManagers: null,
+    vulnerableBuildSkipped: false,
     roots,
     vulnerabilities: null,
     rescuedVulnerabilities: null,
@@ -462,6 +489,7 @@ export function buildResults(work, check) {
     safe: check.buildSafe,
     reasons: check.buildReasons,
     packageManagers: check.packageManagers,
+    vulnerableBuildSkipped: check.vulnerableBuildSkipped,
     result: check.buildResult,
     ...(built ? { copy: workPaths(work).buildCopy } : {}),
     output: check.buildOutput,

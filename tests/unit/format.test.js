@@ -1604,7 +1604,7 @@ test("the build check prompts come from the registry and every part is required"
       ["rescue", "Let the agent try to rescue and build"],
       ["allow", "Let the agent build"],
       ["manual", "Build it myself"],
-      ["manual-vulnerable", "Build it myself"],
+      ["skip-vulnerable", "Skip building for the known vulnerabilities"],
     ]
   );
   const asked = (key, mutate) => {
@@ -1621,7 +1621,7 @@ test("the build check prompts come from the registry and every part is required"
   );
   // What one build is offered is checked per build: a build offered nothing is refused, and
   // so are two answers offered together under one label. Two that are never offered together
-  // ("Build it myself", clean and vulnerable) may share it.
+  // ("Continue building", clean and vulnerable) may share it.
   assert.throws(
     () =>
       checkScaPrompt(

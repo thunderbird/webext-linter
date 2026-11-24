@@ -574,6 +574,7 @@ test("each result of the agent's attempt is worded", () => {
     "build-unsafe",
     "rescue-failed",
     "rescue-mismatch",
+    "vulnerable-build-skipped",
   ]);
   const missing = fresh();
   delete missing.doc["llm-phases"]["build-results"]["build-unsafe"];
