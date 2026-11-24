@@ -415,7 +415,7 @@ test("a safe build prints the Build Review Details and the decision question", (
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
     "* SCA_VULNERABILITIES: 0 moderate, 0 high, 0 critical",
     "",
-    'Reply "next" to continue the review with the question how to build the add-on.',
+    'Reply "next" to continue the review with the question how to handle building the add-on.',
   ]
     .map((line) => (line ? `   ${line}` : ""))
     .join("\n");

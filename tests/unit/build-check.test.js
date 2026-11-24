@@ -852,7 +852,7 @@ test("the reviewer's other answer is worded by the lock's audit", async () => {
   assert.equal(labelled(vulnerable, "Build it myself"), undefined);
   assert.match(
     labelled(vulnerable, SKIP),
-    /Nobody builds the add-on, and the known high or critical vulnerabilities in the lock end the review/
+    /Nobody builds the add-on. The review goes on and will report the known high or critical vulnerabilities/
   );
   answer(vulnerable, { SCA_BUILD_DECISION: SKIP });
   const at = await stepOn(vulnerable);

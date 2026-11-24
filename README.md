@@ -265,10 +265,11 @@ may hold the real source beside the copy.
     as if the build were safe. A build held safe is then put to them as the build decision:
     they let the agent build or build it themselves, or hold it unsafe for reasons of their
     own. Where the lock has a high or critical advisory, they let the agent try to rescue the
-    build, or skip it for the known vulnerabilities, which then end the review with no build
-    question asked. The rescue, in a copy, removes the dependencies the release build does
-    not use and updates the rest to fixed releases. It counts only where its build
-    reproduces the shipped XPI, since only then did none of the vulnerable code ship.
+    build, or skip it for the known vulnerabilities, which the review then
+    reports with no build question asked. The rescue, in a copy, removes the dependencies
+    the release build does not use and updates the rest to fixed releases. It counts only
+    where its build reproduces the shipped XPI, since only then did none of the vulnerable
+    code ship.
   - Where the agent built it, the linter compares its build with the shipped XPI itself. A
     match answers the build question, and nobody is asked.
   - **`build-reproduces-xpi`**, where the reviewer held the build safe and built it

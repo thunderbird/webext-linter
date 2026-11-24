@@ -2815,7 +2815,7 @@ llm-sca-review-prompt:
     - text: |-
         Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_SOURCE, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_PACKAGE_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
-        Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
+        Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the build artifact lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
         The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
 
@@ -2905,19 +2905,19 @@ llm-sca-review-prompt:
   # follow the audit at `analyze`: for a lock with a high or critical advisory
   # (`build-vulnerable`) the agent tries to rescue it (`rescue`), or nobody builds it
   # (`skip-vulnerable`, recorded as `vulnerableBuildSkipped`), so no build question is raised
-  # and the vulnerabilities end the review. For any other lock the agent builds it as submitted
-  # (`allow`), or the reviewer builds it themselves (`manual`). An answer is the label of one
-  # of the answers offered, or the reviewer's own words: the build is unsafe, for the reasons
-  # they give, and build-unsafe reports it. `allow` and `rescue` let the agent build, and
-  # `manual` leaves the build to the reviewer, whom the `built` question asks of their own
-  # build.
+  # and the review goes on and reports the vulnerabilities. For any other lock the agent
+  # builds it as submitted (`allow`), or the reviewer builds it themselves (`manual`). An
+  # answer is the label of one of the answers offered, or the reviewer's own words: the build
+  # is unsafe, for the reasons they give, and build-unsafe reports it. `allow` and `rescue` let
+  # the agent build, and `manual` leaves the build to the reviewer, whom the `built` question
+  # asks of their own build.
   build-decision:
     question: |-
       How should the add-on be built? To hold the build unsafe instead, answer in your own words why building it is unsafe.
     values:
       - value: rescue
         label: Let the agent try to rescue and build
-        description: The lock has dependencies with known high or critical vulnerabilities. The agent removes dependencies the release build does not use, and tries to update any remaining vulnerable packages to fixed releases. If any of these vulnerabilities remain, the rescue has failed and the build is aborted. Otherwise the agent builds the add-on, and the rescue counts only where that build reproduces the submitted XPI. A rescue that failed or does not reproduce the XPI ends the review with the vulnerabilities.
+        description: The lock has dependencies with known high or critical vulnerabilities. The agent removes dependencies the release build does not use, and tries to update any remaining vulnerable packages to fixed releases. If any of these vulnerabilities remain, the rescue has failed and the build is aborted. Otherwise the agent builds the add-on, and the rescue counts only where that build reproduces the submitted XPI. A rescue that failed or does not reproduce the XPI counts for nothing. The review goes on with the source as submitted, and its vulnerabilities will be reported.
         when: build-vulnerable
       - value: allow
         label: Let the agent build
@@ -2929,7 +2929,7 @@ llm-sca-review-prompt:
         when: NOT build-vulnerable
       - value: skip-vulnerable
         label: Skip building for the known vulnerabilities
-        description: Nobody builds the add-on, and the known high or critical vulnerabilities in the lock end the review.
+        description: Nobody builds the add-on. The review goes on and will report the known high or critical vulnerabilities.
         when: build-vulnerable
   # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
@@ -3108,7 +3108,7 @@ llm-phases:
     # By the block the line ends: the build check's decision prompt, or the turn-ending
     # phase of that name.
     next:
-      decision: the question how to build the add-on
+      decision: the question how to handle building the add-on
       built: the question whether the source builds and reproduces the submitted XPI
       ask: the {{count}} manual review questions
       downgrade: the question whether the review should be restarted as a pure XPI review
