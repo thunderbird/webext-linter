@@ -453,7 +453,7 @@ test("an answer too long to be a note is refused at the hand-back", () => {
 
   let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
+  while (/^\s+webext-linter --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({
       ...e,

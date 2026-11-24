@@ -421,7 +421,7 @@ flowchart TB
             <li>Colour only where the format is <code>text</code> and stdout is a terminal.</li>
           </ul>
         </li>
-        <li><strong>The run banner</strong> (<code>runBanner</code>): a blank line, <code>&gt; &lt;name&gt;@&lt;version&gt; review</code> and <code>&gt; node verify.js &lt;the arguments&gt;</code> from <code>package.json</code>, and a blank line, as npm prints its own run header. It goes through the feed's <code>info</code>, so a <code>json</code> run prints none, and it is left out where npm already printed its header (<code>npm_lifecycle_script</code> names <code>verify.js</code>, as under <code>npm run verify</code>). Every run that parses prints it before any branch, so <code>--help</code> and every refusal carry it.</li>
+        <li><strong>The run banner</strong> (<code>runBanner</code>): a blank line, <code>&gt; &lt;name&gt;@&lt;version&gt; review</code> and <code>&gt; webext-linter &lt;the arguments&gt;</code> from <code>package.json</code>, and a blank line, as npm prints its own run header. It goes through the feed's <code>info</code>, so a <code>json</code> run prints none, and it is left out where npm already printed its header (<code>npm_lifecycle_script</code> names <code>verify.js</code>, as under <code>npm run verify</code>). Every run that parses prints it before any branch, so <code>--help</code> and every refusal carry it.</li>
         <li><strong><code>--help</code> is answered before any guard:</strong> a reader asking what the flags are is told, rather than refused over a flag the run never reaches. The help text goes to stdout, and the run exits 0. Only an unreadable registry and a command line that does not parse come first.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
@@ -970,7 +970,6 @@ flowchart TB
           <ul>
             <li><strong>A build-guard check switched off</strong> (<code>buildGuarded</code> false): any check whose registry entry has <code>build-guard: true</code> (today <code>lockfile-injection</code>, <code>build-registry-redirect</code>, <code>lock-foreign-source</code> and the four <code>vendor-vulnerable</code> checks) not selected by the recorded <code>--checks-only</code> and <code>--checks-skip</code>. The folder is <code>done</code> at once, with <code>packageManagers</code> false and <code>buildSafe</code> null: nobody is asked, nothing is audited or built. The review reads the same answer as its <code>build-guarded</code> fact.</li>
             <li><strong>The audit of the lock</strong> (3.2.4), before anyone is asked. Its counts are recorded as <code>vulnerabilities</code>. Where it finds nothing the agent may build (a lock not read in full, or a declared dependency nobody can review), the folder is <code>done</code> at once, with <code>packageManagers</code> false and <code>buildSafe</code> null: nobody is asked, nothing is built.</li>
-            <li><strong>The hot runs' switch</strong> (<code>WEBEXT_LINTER_AGENT_BUILDS=1</code>, see "The record"): the decision is taken as <code>allow</code> after a safe verdict and as <code>skip</code> after an unsafe one, without the <code>override-unsafe</code> and <code>decision</code> steps.</li>
             <li><strong>Otherwise</strong> <code>override-unsafe</code> after an unsafe verdict, and <code>decision</code> after a safe one.</li>
           </ul>
         </li>
@@ -1746,7 +1745,6 @@ flowchart TB
                 <li><code>rescued/</code>: the build check, right after it creates the rescued copy, in the hand-back that audits the lock and finds it rescuable, on the way into <code>rescue</code>.</li>
               </ul>
               The hand-back's folder check reads this set and nothing else. Which tree the review reads, <code>sca/</code> or <code>rescued/</code>, is the build check's own decision and part of its results: it decides what the review reads, not which folders are checked. Folders the agent works in, such as <code>build/</code>, are not the submission's and are not named.</li>
-            <li><strong>The hot runs' switch is read where it is used, never recorded</strong> (2026-10-28). <code>WEBEXT_LINTER_AGENT_BUILDS=1</code> lets the hot runs (tests/hot/) skip the build check's decision question. It is a test concern, so it stays out of the record: <code>analyze</code> reads the variable itself when it would ask, and the hot runs export it once for the whole session, so every hand-back inherits it (tests/hot/README.md says so).</li>
             <li><strong>The current part</strong> is the mode, its step or phase and its own body. "start a mode" replaces only it, and "the record at the next step" and "the record at the close" move only it on. None of them deals with the permanent part, so no step "keeps" anything and no step can drop a fact by accident.</li>
             <li><strong>Who comes first does not matter:</strong> every writer writes into the record the load created, and no subroutine takes "the record, or none in a first run".</li>
             <li><strong>A record with no mode</strong> (an empty one, or a plain run's, which never gets one) holds no review in progress: the hand-back's entry fails it, see below.</li>
@@ -2124,7 +2122,7 @@ flowchart TB
             <thead><tr><th>Placeholder</th><th>Filled with</th></tr></thead>
             <tbody>
               <tr><td><code>{{review}}</code> (block)</td><td>the answers file, <code>workPaths(work).answers</code></td></tr>
-              <tr><td><code>{{command}}</code> (block)</td><td><code>node verify.js --llm-handback &lt;work folder&gt;</code>, the folder quoted as a shell argument</td></tr>
+              <tr><td><code>{{command}}</code> (block)</td><td><code>webext-linter --llm-handback &lt;work folder&gt;</code>, the folder quoted as a shell argument</td></tr>
               <tr><td><code>{{schema}}</code> (block)</td><td>the schema lines the review started with (<code>schemaLines</code>, stored in the record's paths)</td></tr>
               <tr><td><code>{{details}}</code> (block)</td><td>the Review Details (<code>reviewDetails</code>), or at a close and at the restart prompt the closing details, which end on the abort lines where the review was aborted, then the waiting line where the phase ends the turn</td></tr>
               <tr><td><code>{{buildDetails}}</code> (block)</td><td>the Build Review Details (the Review Details without the description and the report), then the waiting line where the phase ends the turn</td></tr>

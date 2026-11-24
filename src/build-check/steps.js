@@ -16,8 +16,7 @@
 // and go on as if the build were safe. A safe verdict, or an overridden one, moves on to
 // `decision`, which shows the Build Review Details where `override-unsafe` did not and asks
 // them alone for the one decision about the build: let the agent build or build it themselves,
-// or hold it unsafe for reasons of their own (pre-answered where the hot runs switched the
-// agent's builds on, which skips both steps). Unless they let the agent build, the folder is
+// or hold it unsafe for reasons of their own. Unless they let the agent build, the folder is
 // done at once: a rescue runs package-manager commands, so none is tried. Otherwise the audit
 // decides. A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`,
 // and the agent builds the original there, as the lock pins it, and names what the build
@@ -114,18 +113,6 @@ const SCA_BUILD_SAFETY_ISSUES = "SCA_BUILD_SAFETY_ISSUES";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
 const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
-/**
- * Whether the hot runs switched the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1): their
- * stand-in for the reviewer's build decision, which nothing documents. It lets the agent
- * build a build judged safe, and builds nothing judged unsafe. A test concern, so it is read
- * where it is used, by `analyze` when it would ask, and never recorded: the hot runs export it
- * for the whole session, so every hand-back inherits it (tests/hot/README.md).
- * @returns {boolean}
- */
-function agentBuildsSwitchedOn() {
-  return process.env.WEBEXT_LINTER_AGENT_BUILDS === "1";
-}
-
 /**
  * What a step hands out next: the record at the next step and the entries its prompt asks for
  * (`step`), which the hand-back issues, or the folder done (`review`), its record written,
@@ -440,8 +427,7 @@ export function namedExperimentFolder(work, record) {
  * Otherwise the package root's lock is audited and its counts recorded, before anyone is
  * asked. A lock the audit cannot read in full, or one with a declared dependency nobody can
  * review, is done at once too, with nothing asked and nothing built. Otherwise, after either
- * verdict, it moves on to the decision question, or, where the hot runs switched the agent's
- * builds on (agentBuildsSwitchedOn), to the decision that answers for the reviewer.
+ * verdict, it moves on to the reviewer's questions.
  * @param {string} work
  * @param {object} record  At `analyze`.
  * @param {AuditContext} context
@@ -473,10 +459,6 @@ async function analyze(work, record, context, prompt, registry) {
   });
   if (!isClean(found) && !isRescuable(found)) {
     return done(work, movedOn(audited, { packageManagers: false }));
-  }
-  if (agentBuildsSwitchedOn()) {
-    const id = buildSafety === "safe" ? "allow" : "skip";
-    return decided(work, audited, id, null, prompt);
   }
   if (buildSafety === "unsafe") {
     return ask(movedOn(audited, { step: BUILD_CHECK_STEP.overrideUnsafe }), [

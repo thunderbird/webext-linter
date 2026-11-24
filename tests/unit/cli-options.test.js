@@ -23,12 +23,12 @@ test("--help prints usage to stdout and exits 0", () => {
   const r = run(["--help"]);
   assert.equal(r.code, 0);
   assert.match(r.stdout, /--checks-only/);
-  assert.match(r.stdout, /node verify\.js/);
+  assert.match(r.stdout, /webext-linter <xpi\|folder>/);
   assert.doesNotMatch(r.stdout, /node review\.js|node build\.js|node lint\.js/);
   assert.equal(r.stderr, "");
   // The run header opens the output, echoing the args (here --help).
   assert.match(r.stdout, /> (?:@[\w-]+\/)?webext-linter@\d+\.\d+\.\d+ review/);
-  assert.match(r.stdout, /node verify\.js --help/);
+  assert.match(r.stdout, /> webext-linter --help/);
   // Every flag is listed under a group that holds more than it. --report-format has no
   // group of its own: one option under a heading is a heading that says nothing.
   assert.match(r.stdout, /--warnings-as-errors/);

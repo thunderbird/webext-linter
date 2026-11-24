@@ -2806,7 +2806,7 @@ llm-sca-review-prompt:
       text: |-
         In ANSWERS, write <SCA_EXPERIMENTS> as the "answer" of the entry whose "index" is SCA_EXPERIMENTS, and change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
@@ -2831,7 +2831,7 @@ llm-sca-review-prompt:
 
         Change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
@@ -2852,7 +2852,7 @@ llm-sca-review-prompt:
 
         Record the label they picked in that entry's "answer", exactly as it is written, and nothing else. Where they type words of their own instead, ask the question again: this question takes one of its two labels only. Change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
@@ -2875,7 +2875,7 @@ llm-sca-review-prompt:
 
         Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Their words are at most {{maxNote}} characters long, and never empty. Copy those words verbatim, never shortened, summarised, reworded or translated. Change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
@@ -2946,7 +2946,7 @@ llm-sca-review-prompt:
     - text: |-
         Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the build produced, as an absolute path: the XPI or zip file where it makes one, or else the folder it writes. Where the build failed, answer with the "label" of its one answer instead. Compare nothing with the submitted XPI: the linter does that itself. Change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
@@ -2982,7 +2982,7 @@ llm-sca-review-prompt:
     - text: |-
         Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the last build produced, as an absolute path: the XPI or zip file where it makes one, or else the folder it writes. Where the rescue failed, answer with the "label" of its one answer instead. Compare nothing with the submitted XPI: the linter does that itself. Change nothing else in the file.
     - text: |-
-        Run the linter with exactly these flags, and nothing else:
+        Run webext-linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-

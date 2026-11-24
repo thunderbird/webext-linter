@@ -18,6 +18,15 @@ needs a person. See Review checks below.
 
 ## Usage
 
+Install the published package, which puts the `webext-linter` command on the path:
+
+```sh
+npm install -g @thunderbirdops/webext-linter
+webext-linter <xpi|folder> [options]
+```
+
+Or work from a clone of this repository:
+
 ```sh
 npm install
 ```
@@ -610,7 +619,7 @@ node verify.js ./built.xpi --sca-extracted ./source
 
 ## Contributing
 
-Requires Node `>=20` and `npm install` once. Before sending a change, run:
+Requires Node `>=24.11.0` and `npm install` once. Before sending a change, run:
 
 ```sh
 npm run lint          # ESLint over src/ and the root entry files

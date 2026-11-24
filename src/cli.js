@@ -111,15 +111,15 @@ const { name: PKG_NAME, version: PKG_VERSION } = parseJson(
 
 /**
  * The two-line run banner in npm's style: a `> name@version review` line, then
- * the `node verify.js <args>` command, so a direct run opens with the same
+ * the `webext-linter <args>` command, so a direct run opens with the same
  * identifying lines npm itself would print for the same command.
  * @param {string[]} [argv]  The args this run was invoked with, echoed after
- *   `node verify.js` (as npm does) so the banner states what ran.
+ *   `webext-linter` (as npm does) so the banner states what ran.
  * @returns {string}
  */
 export function runBanner(argv = []) {
   const args = argv.length ? ` ${argv.join(" ")}` : "";
-  return `> ${PKG_NAME}@${PKG_VERSION} review\n> node verify.js${args}`;
+  return `> ${PKG_NAME}@${PKG_VERSION} review\n> webext-linter${args}`;
 }
 
 /**
@@ -285,7 +285,7 @@ function helpText(registry) {
 
   const commands = [
     [
-      "node verify.js <xpi|folder> [options]",
+      "webext-linter <xpi|folder> [options]",
       "verify an .xpi or source folder against the Thunderbird schema and review policies. The .xpi must be the file itself, never a symlink to one.",
     ],
   ];

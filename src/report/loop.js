@@ -660,7 +660,7 @@ export function loopSlots(review, record, issued, work, registry) {
     // folder a later pass finds the record and the answers file in, each by its fixed name.
     // Quoted like any argument of a command its reader runs.
     review: workPaths(work).answers,
-    command: `node verify.js --llm-handback ${shellArg(work)}`,
+    command: `webext-linter --llm-handback ${shellArg(work)}`,
     schemaCache: paths.schemaCache ?? "",
     // How the agent and the report and sweep agents it starts write their own prose.
     proseStyle: registry.proseStyle(),

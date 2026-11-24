@@ -476,33 +476,7 @@ test("an unsafe build prints the Build Review Details once, then the override an
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The agent-builds test switch answers the decision question up front where `analyze`
-// would ask it: the safe build, its lock audited clean, goes straight on to the agent's build,
-// with no question put. It is a test concern, read where it is used and never recorded, so the
-// hot runs export it for the whole session and every hand-back inherits it.
-test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the decision question", () => {
-  const env = { WEBEXT_LINTER_AGENT_BUILDS: "1" };
-  const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], env);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  assert.ok(!("agentBuilds" in readJson(work, "state")), "never recorded");
-  assert.ok(!("llm-agent-builds" in readJson(work, "state").flags));
-  fs.writeFileSync(headerValue(r.stdout, "SCA_BUILD_REPORT"), "1. `npm ci`\n");
-  answer(work, { SCA_BUILD_SAFETY_ISSUES: [] });
-  const handed = run(["--llm-handback", work], env);
-  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
-  assert.doesNotMatch(handed.stdout, /SCA_BUILD_DECISION/);
-  // The build check goes on to the agent's build, let build for the reviewer.
-  const record = readJson(work, "state");
-  assert.equal(record.current.step, "build");
-  assert.equal(record.current.buildSafety, "safe");
-  assert.equal(record.current.packageManagers, true);
-  assert.equal(record.current.buildSafe, true);
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// The decision question is answered up front only by the test switch: no option does it.
+// Nothing answers the decision question for the reviewer: no option does it.
 test("--llm-agent-builds is an unknown option", () => {
   const dir = submissionFolder();
   const r = run([

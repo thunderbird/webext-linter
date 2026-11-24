@@ -909,50 +909,9 @@ test("the build decision records what the reviewer answered", async () => {
   }
 });
 
-/** `run` with the hot runs' switch for the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1),
- *  as the hot runs export it for the whole session. */
-async function withAgentBuilds(run) {
-  process.env.WEBEXT_LINTER_AGENT_BUILDS = "1";
-  try {
-    return await run();
-  } finally {
-    delete process.env.WEBEXT_LINTER_AGENT_BUILDS;
-  }
-}
-
-// The hot runs' switch for the agent's builds answers the decision question for the
-// reviewer: a safe build, its lock audited clean, is recorded as let it build and goes to the
-// build. An unsafe one is built by nobody. The switch is read from the
-// environment, and the record holds nothing of it.
-test("the hot runs' switch for the agent's builds skips the decision question", async () => {
-  const work = workFolder(
-    { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { vulns: TOOL_CLEAN }
-  );
-  const at = await withAgentBuilds(() => analyzeStep(work));
-  assert.ok(!Object.hasOwn(at.record, "agentBuilds"), "nothing recorded");
-  assert.equal(at.next, "step");
-  assert.equal(at.record.current.step, BUILD_CHECK_STEP.build);
-  assert.equal(at.record.current.buildSafety, "safe");
-  assert.equal(at.record.current.packageManagers, true);
-  assert.equal(at.record.current.buildSafe, true);
-  cleanup(work);
-  const unsafe = workFolder(
-    { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { vulns: TOOL_CLEAN }
-  );
-  const skipped = await withAgentBuilds(() =>
-    analyzeStep(unsafe, { SCA_BUILD_SAFETY_ISSUES: UNSAFE })
-  );
-  assert.equal(skipped.next, "review");
-  assert.equal(skipped.record.current.packageManagers, false);
-  assert.equal(skipped.record.current.buildSafe, false);
-  cleanup(unsafe);
-});
-
 // With a check the build relies on switched off (`build-guard`), nothing vouches for what an
 // install pulls in: a safe build is done at once, the reviewer is not asked, and the agent
-// builds nothing, whether or not the hot runs' switch lets it.
+// builds nothing.
 test("a build guard switched off lets nobody build", async () => {
   // A guard the lists can reach: one that ends a review early always runs (checkSelected).
   const registry = loadRegistry();
@@ -967,7 +926,7 @@ test("a build guard switched off lets nobody build", async () => {
       { "package.json": packageFile(), "package-lock.json": npmLock() },
       { vulns: TOOL_CLEAN, flags: { [flag]: value } }
     );
-    const at = await withAgentBuilds(() => analyzeStep(work));
+    const at = await analyzeStep(work);
     assert.equal(at.next, "review", flag);
     assert.equal(at.record.current.buildSafety, "safe");
     assert.equal(at.record.current.packageManagers, false);

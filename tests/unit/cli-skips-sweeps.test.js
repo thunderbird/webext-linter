@@ -307,7 +307,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
   let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
+  while (/^\s+webext-linter --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -373,7 +373,7 @@ test("a swept case of a check that files findings is verified like one", () => {
   fs.writeFileSync(file, JSON.stringify(verify, null, 1));
   let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
+  while (/^\s+webext-linter --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));

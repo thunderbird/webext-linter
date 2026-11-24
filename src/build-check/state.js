@@ -48,8 +48,7 @@ import {
  *   once the early-exit checks passed on the source in `sca/`. The next hand-back moves to
  *   `done` where a build-guard check is switched off. Otherwise it audits the package root's
  *   lock, and moves to `done` where the agent may build nothing from it, else a safe verdict
- *   on to `decision` and an unsafe one on to `override-unsafe` (or, where the hot runs
- *   switched the agent's builds on, decides for the reviewer);
+ *   on to `decision` and an unsafe one on to `override-unsafe`;
  * - `override-unsafe`: the verdict is unsafe, the reviewer is shown the Build Review Details
  *   and asked whether to override it, and the next hand-back reads the answer: skipping the
  *   build is done at once, overriding moves on to `decision`;
@@ -114,8 +113,7 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?boolean} buildSafe  The reviewer's one decision about the build: whether it is
  *   safe, the agent's verdict as they kept it or, at `override-unsafe`, overrode it (an
  *   unsafe verdict held safe is an overridden one), and false where they skipped it or gave
- *   reasons of their own (the hot runs' switch answering for them, src/build-check/steps.js
- *   agentBuildsSwitchedOn). Null before it, and where a build-guard check
+ *   reasons of their own. Null before it, and where a build-guard check
  *   is switched off or the audit found nothing the agent may build, which asks nothing. The review reads it as its `build-judged` and
  *   `build-safe` facts.
  * @property {?string} buildReasons  The reviewer's own words for holding the build unsafe,
