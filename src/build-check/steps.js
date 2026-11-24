@@ -74,7 +74,12 @@ import { holds } from "../checks/condition.js";
 import { loadAddon } from "../addon/load.js";
 import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { splitList } from "../lib/util.js";
-import { misplacedFolders, runCache, workPaths } from "../util/dest.js";
+import {
+  misplacedFolders,
+  misplacedFoldersError,
+  runCache,
+  workPaths,
+} from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
 import { withRunCache } from "../vendor/run-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -162,7 +167,9 @@ function agentBuildsSwitchedOn() {
  * @returns {boolean}
  */
 export function asksExperiments(record) {
-  return modeOf(record) === MODE.experimentFolder && record.submission.experiments;
+  return (
+    modeOf(record) === MODE.experimentFolder && record.submission.experiments
+  );
 }
 
 /**
@@ -613,7 +620,9 @@ function decided(work, record, id, reasons, prompt) {
     work,
     movedOn(record, {
       packageManagers: id === "allow" || id === "rescue",
-      buildSafe: ["allow", "rescue", "manual", "manual-vulnerable"].includes(id),
+      buildSafe: ["allow", "rescue", "manual", "manual-vulnerable"].includes(
+        id
+      ),
       buildReasons: reasons,
     }),
     prompt
@@ -695,7 +704,7 @@ function analyzedAnswers(work, record) {
   }
   return {
     roots: record.current.roots,
-    buildIssues: buildIssuesOf(list, realSca(workPaths(work))),
+    buildIssues: buildIssuesOf(list, realSca(work)),
   };
 }
 
@@ -784,23 +793,23 @@ function moveTree({ source, ...inTree }, to) {
 }
 
 /**
- * The folder the source was extracted into, real: it must be a folder itself, not a link to
- * one, since everything inside it is taken as the submission's source. Asked of the agent's
- * answer at `experiment-folder` (misplacedFolders words why it is not), and found as it was by
+ * The folder the linter extracted the source into, real: it must still be a folder itself,
+ * not a link to one, since everything inside it is taken as the submission's source. Asked
+ * before the source review starts, at once or at `experiment-folder`, and found as it was by
  * every later step, whose hand-back checked it first (src/review/record.js namedFolders).
- * @param {ReturnType<typeof workPaths>} paths
+ * The linter made it, so one that is gone or replaced is no answer to correct: the review
+ * cannot be carried on (misplacedFoldersError).
+ * @param {string} work  The work folder, absolute.
  * @returns {string}
- * @throws {HandbackRefused}
+ * @throws {Error}  The failure, naming what happened to sca/.
  */
-export function realSca(paths) {
-  const [misplaced] = misplacedFolders([paths.sca]);
-  if (misplaced) {
-    throw new HandbackRefused(
-      `"${paths.sca}" ${misplaced.problem}, so it is not the folder the source was ` +
-        "extracted into: extract it there"
-    );
+export function realSca(work) {
+  const sca = workPaths(work).sca;
+  const misplaced = misplacedFolders([sca]);
+  if (misplaced.length) {
+    throw misplacedFoldersError(work, misplaced);
   }
-  return fs.realpathSync(paths.sca);
+  return fs.realpathSync(sca);
 }
 
 /**

@@ -987,7 +987,7 @@ export function entryKey(p) {
  * @param {string[]} keys
  * @returns {boolean}
  */
-export function namesCollide(keys) {
+function namesCollide(keys) {
   const files = new Set();
   for (const key of keys) {
     const folded = key.toLowerCase();

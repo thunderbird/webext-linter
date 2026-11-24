@@ -1412,7 +1412,7 @@ function experimentFolderProblem({ problem, real }, sca) {
 async function experimentFolderCase(work, record, registry) {
   // The extracted source first: an answer naming a folder in a sca/ that is gone means
   // nothing.
-  realSca(workPaths(work));
+  realSca(work);
   return startSourceReview(
     work,
     record,
@@ -1435,7 +1435,7 @@ async function experimentFolderCase(work, record, registry) {
  * @throws {HandbackRefused}  An Experiment folder the agent named that does not fit.
  */
 async function startSourceReview(work, record, registry, experiments) {
-  const sca = realSca(workPaths(work));
+  const sca = realSca(work);
   let approved;
   try {
     approved = approveScaFolders(

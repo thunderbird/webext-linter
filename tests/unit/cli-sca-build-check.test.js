@@ -428,10 +428,12 @@ test("a build check refuses an unanswered hand-back", () => {
   const work = workOf(r.stdout);
   fs.rmSync(workPaths(work).sca, { recursive: true, force: true });
   const gone = run(["--llm-handback", work]);
+  // The linter made sca/, so one that is gone is no answer to redo: the review cannot be
+  // carried on.
   assert.equal(gone.code, 2);
   assert.match(
-    gone.stdout,
-    /The hand-back was refused: ".+\/sca" is gone, so it is not the folder the source was extracted into/
+    gone.stderr,
+    /no longer holds the folders the linter put there for this review: sca\/ is gone\. It cannot be carried on\./
   );
   // A hand-back that fails takes nothing away: the folder was not this run's to remove.
   assert.ok(fs.existsSync(workPaths(work).state), "the record stays");
@@ -808,7 +810,10 @@ test("a review of a source the agent built and the linter matched asks no build 
   assert.equal(r.code, 0, r.stdout + r.stderr);
   const started = readJson(work, "state").current;
   assert.notEqual(started.phase, "built", "no build question is asked");
-  for (const ruleId of ["build-reproduces-xpi", "build-not-reproduced-confirm"]) {
+  for (const ruleId of [
+    "build-reproduces-xpi",
+    "build-not-reproduced-confirm",
+  ]) {
     assert.ok(
       !started.manual.some((m) => m.ruleId === ruleId),
       `${ruleId} raises nothing`

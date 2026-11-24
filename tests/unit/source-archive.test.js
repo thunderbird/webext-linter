@@ -165,6 +165,56 @@ test("an entry inside a stored link is refused before it is written", async () =
 
 test("an archive naming one path twice is refused", async () => {
   await refusedWith("twice.tar", "it names one path twice");
+  await refusedWith("file-then-folder.tar", "it names one path twice");
+});
+
+// Every name is judged before anything of it is written: a file named as a link before it
+// would be written wherever that link points.
+test("a file named as a link before it is refused before it is written", async () => {
+  const dest = destination();
+  const victim = path.resolve(dest, "../../victim.txt");
+  const before = fs.existsSync(victim) ? fs.readFileSync(victim) : null;
+  await refusedWith("link-then-file.tar", "it names one path twice");
+  assert.deepEqual(
+    fs.existsSync(victim) ? fs.readFileSync(victim) : null,
+    before
+  );
+});
+
+// A case-insensitive disk takes `Lib` for the link `lib`, so names are compared case-folded.
+test("an entry inside a stored link in another case is refused", async () => {
+  await refusedWith(
+    "through-link-case.tar",
+    'its entry "Lib/z.txt" lies inside the symbolic link "lib"'
+  );
+});
+
+test("an entry whose name is not UTF-8 is refused", async () => {
+  await refusedWith(
+    "latin1-name.tar",
+    "it holds an entry whose name is not UTF-8"
+  );
+});
+
+// libarchive ends a cut archive's entries as it ends a whole one's: cut between entries, or
+// inside one's data, it is refused, never extracted as far as it goes.
+test("an archive cut short is refused", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-cut-"));
+  const whole = fs.readFileSync(path.join(FIXTURES, "source.tar"));
+  for (const [at, why] of [
+    [1000, "libarchive could not read it to the end: Truncated input file"],
+    [1536, 'its entry "package.json" could not be extracted'],
+  ]) {
+    const cut = path.join(dir, `cut-${at}.tar`);
+    fs.writeFileSync(cut, whole.subarray(0, at));
+    const dest = path.join(dir, `sca-${at}`);
+    await assert.rejects(extractSourceArchive(cut, dest), (err) => {
+      assert.ok(err.message.includes(why), err.message);
+      return true;
+    });
+    assert.ok(!fs.existsSync(dest), at);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test("a hard link is refused", async () => {

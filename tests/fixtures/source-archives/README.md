@@ -44,6 +44,15 @@ src/main.js     'import { sort } from "./lib/sort.js";\nconsole.log(sort([3, 1, 
 - `absolute.tar`: `T -P --transform='s,^,/abs/,' -cf absolute.tar x.txt`.
 - `backslash.tar`: a file named `a\b.txt`, `T --no-unquote -cf backslash.tar 'a\b.txt'`.
 - `twice.tar`: `T -cf twice.tar README.md`, then `T -rf twice.tar README.md`.
+- `file-then-folder.tar`: a file `a`, then `b.txt` stored as `a/b.txt`:
+  `T -cf file-then-folder.tar -C <a folder> a --transform='s,^b.txt,a/b.txt,' b.txt`.
+- `link-then-file.tar`: a link `x -> ../../victim.txt`, then a file `x` from another folder:
+  `T -cf link-then-file.tar -C <link folder> x -C <file folder> x`. Refused before the file
+  is written through the link.
+- `through-link-case.tar`: a link `lib -> /tmp`, then `z.txt` stored as `Lib/z.txt`, as
+  `through-link.tar` is made. Names are compared case-folded.
+- `latin1-name.tar`: a file named `caf\xe9.txt` in Latin-1, `T -cf latin1-name.tar "$(printf 'caf\xe9.txt')"`.
+- A tar cut short is made by the test itself from `source.tar`.
 - `hardlink.tar`: `a.txt` and `ln a.txt b.txt`, then `T -cf hardlink.tar a.txt b.txt`.
 - `encrypted.zip`: `zip -qX -P secret encrypted.zip README.md`.
 - `source.tar.zst`: `zstd -q -19 source.tar -o source.tar.zst`, a type ATN does not accept.

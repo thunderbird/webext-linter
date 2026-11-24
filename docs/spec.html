@@ -778,9 +778,8 @@ flowchart TB
           <div>
             <pre class="mermaid">
 flowchart TB
-  T(["state.json: mode experiment-folder"]) --> SU{{"experiment-folder: sca/<br/>still a real folder, not a link? realSca"}}
-  SU -- "no: gone or replaced" --> SUi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> SUe(("exit<br/>handling<br/>files kept, exit 2")):::final --> SUr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
-  SU -- yes --> HX["read the Experiment answer<br/>trimmed, namedExperimentFolder"]
+  T(["state.json: mode experiment-folder"]) --> SU["sca/ still the real folder the linter made<br/>realSca, else a failure"]
+  SU --> HX["read the Experiment answer<br/>trimmed, namedExperimentFolder"]
   HX -- "blank, or not an absolute path" --> HXi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HXe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HXr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
   HX -- "absolute" --> HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
   HK -- "throws ScaFoldersRejected: caught,<br/>thrown on as a refusal" --> HKi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HKe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HKr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
@@ -792,12 +791,6 @@ flowchart TB
     HUr
   end
   style DB2 fill:#fde68a,stroke:#a16207,stroke-width:2.5px,color:#1d1d1b
-  subgraph DD11 ["D"]
-    SUi
-    SUe
-    SUr
-  end
-  style DD11 fill:#bbf7d0,stroke:#15803d,stroke-width:2.5px,color:#1d1d1b
   subgraph DD12 ["D"]
     HKi
     HKe
@@ -810,9 +803,6 @@ flowchart TB
     HXr
   end
   style DD13 fill:#bbf7d0,stroke:#15803d,stroke-width:2.5px,color:#1d1d1b
-  click SUi href "#print-the-message"
-  click SUe href "#exit-handling-the-files-the-code"
-  click SUr href "#hand-back"
   click HX href "#experiment-folder-step"
   click HXi href "#print-the-message"
   click HXe href "#exit-handling-the-files-the-code"
@@ -846,14 +836,14 @@ flowchart TB
         <li><strong>What it asks of the agent.</strong> To name the Experiment folder in the extracted source, and then to run the command. The agent extracts nothing.</li>
         <li><strong>The find-experiment condition.</strong> A step of the list marked <code>when: find-experiment</code> is printed only where <code>asksExperiments</code> holds: the record is in mode <code>experiment-folder</code> and <code>submission.experiments</code> is true, which holds whenever the mode is entered. That fact is added with what was given, from the loaded <code>xpi/</code>'s manifest (<code>isExperiment</code>, a declared <code>experiment_apis</code>). <code>find-experiment</code> is one of the two facts these prompts' conditions can name (<code>SCA_PROMPT_FACTS</code>), checked in the condition language the review loop's steps use. The other is <code>build-overridden</code>, at <code>decision</code> (3.2.3). The two marked steps ask the agent to find the folder holding the Experiment implementation anywhere under <code>EXTRACT_TO</code> and to write its absolute path into the answer slot.</li>
         <li><strong>The answer slots.</strong> The answers file holds one entry, <code>index: "SCA_EXPERIMENTS"</code> with <code>answer: null</code>. <code>EXTRACT_TO</code> is no slot: the linter extracted into it, and the hand-back looks there.</li>
-        <li><strong>The order of the hand-back.</strong> <code>realSca</code> first, then <code>namedExperimentFolder</code>, then "approve the sca folders" with the source <code>sca/</code> (real) and the Experiment folder. Each throws a refusal (a D box, nothing written) on what it cannot take. Only then is anything written: the folder <code>sca/</code> added to the record, the package root settled, the flags rebuilt from the record (<code>recordedValues</code>, a failure where the record does not hold them as a command line would), and "review the loaded submission" called with LLM.</li>
+        <li><strong>The order of the hand-back.</strong> <code>realSca</code> first, then <code>namedExperimentFolder</code>, then "approve the sca folders" with the source <code>sca/</code> (real) and the Experiment folder. <code>realSca</code> fails on a <code>sca/</code> that is gone or replaced (<code>misplacedFoldersError</code>): the linter made it, so it is no answer to redo, and the review cannot be carried on. The other two throw a refusal (a D box, nothing written) on what they cannot take. Only then is anything written: the folder <code>sca/</code> added to the record, the package root settled, the flags rebuilt from the record (<code>recordedValues</code>, a failure where the record does not hold them as a command line would), and "review the loaded submission" called with LLM.</li>
       </ul>
       <table>
         <thead>
           <tr><th>What the hand-back finds</th><th>Who says so</th><th>Outcome</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>sca/</code> gone, a symbolic link, or no folder</td><td><code>realSca</code> (<code>misplacedFolders</code>)</td><td>refused: not the folder the source was extracted into</td></tr>
+          <tr><td><code>sca/</code> gone, a symbolic link, or no folder</td><td><code>realSca</code> (<code>misplacedFolders</code>)</td><td>a failure, files kept: start the review again from the submission</td></tr>
           <tr><td>the answers file unreadable, not JSON, or without an <code>entries</code> list</td><td><code>readHandback</code></td><td>refused</td></tr>
           <tr><td><code>SCA_EXPERIMENTS</code> a string of blanks only</td><td><code>namedExperimentFolder</code></td><td>refused: names no folder</td></tr>
           <tr><td><code>SCA_EXPERIMENTS</code> missing, twice, still null, or not a non-empty string</td><td><code>answersOf</code>, as words</td><td>refused</td></tr>
@@ -1285,7 +1275,7 @@ flowchart TB
       </div>
       <ul>
         <li><strong>"copy the source"</strong> copies the folder named by <code>--sca-extracted</code> 1:1 into <code>sca/</code> (<code>copySource</code>), for ①b and ②b alike, and knows nothing of the package root. In ③ the source arrives packed, and "extract the source archive" puts it there instead.</li>
-        <li id="extract-the-source-archive"><strong>"extract the source archive"</strong> (<code>extractSourceArchive</code>, src/addon/source-archive.js) writes ③'s source archive into a fresh <code>sca/</code>, with libarchive in WebAssembly, so it needs no system tool on any platform. It takes the nine types ATN accepts (<code>.zip</code>, <code>.tar</code>, <code>.7z</code>, <code>.tar.gz</code>, <code>.tgz</code>, <code>.tbz</code>, <code>.txz</code>, <code>.tar.bz2</code>, <code>.tar.xz</code>), told by the archive's first bytes, never by its name, which ATN mangles. Anything else is refused. Where an archive holds a single file that is itself one of those archives, that file is unpacked in its place, layer after layer (at most four), until a layer holds anything else: the readable source. An archive found beside other files stays packed, and the review reports it. Each entry is checked before its data is read: its path by the rules of the <code>.xpi</code> (<code>isSafeAddonPath</code>, inside <code>sca/</code>), no path twice (<code>namesCollide</code>), nothing encrypted, and the unpacked size under a cap (<code>SOURCE_ARCHIVE_MAX_UNPACKED_BYTES</code>). A file is written, a folder made, and a symbolic link created as stored and never followed. A platform that cannot create the link stops the extraction, with the advice to extract the archive yourself and use <code>--sca-extracted</code>. A hard link or any other entry is refused. A refusal removes <code>sca/</code> and is a failure: nothing can be reviewed.</li>
+        <li id="extract-the-source-archive"><strong>"extract the source archive"</strong> (<code>extractSourceArchive</code>, src/addon/source-archive.js) writes ③'s source archive into a fresh <code>sca/</code>, with libarchive in WebAssembly, so it needs no system tool on any platform. It takes the nine types ATN accepts (<code>.zip</code>, <code>.tar</code>, <code>.7z</code>, <code>.tar.gz</code>, <code>.tgz</code>, <code>.tbz</code>, <code>.txz</code>, <code>.tar.bz2</code>, <code>.tar.xz</code>), told by the archive's first bytes, never by its name, which ATN mangles. Anything else is refused. Where an archive holds a single file that is itself one of those archives, that file is unpacked in its place, layer after layer (at most four), until a layer holds anything else: the readable source. An archive found beside other files stays packed, and the review reports it. Each entry is judged before anything of it is written: its name in UTF-8, its path by the rules of the <code>.xpi</code> (<code>isSafeAddonPath</code>, inside <code>sca/</code>), against every name written before it, compared case-folded (<code>judgeName</code>: no path twice, none inside a file, none inside a link the archive stored), nothing encrypted, and the unpacked size under a cap (<code>SOURCE_ARCHIVE_MAX_UNPACKED_BYTES</code>). A file is written, a folder made, and a symbolic link created as stored and never followed. A platform that cannot create the link stops the extraction, with the advice to extract the archive yourself and use <code>--sca-extracted</code>. A hard link or any other entry is refused, as is any other error writing an entry, and an archive libarchive cannot read to its end (it ends a cut archive's entries as it ends a whole one's, and only its recorded error tells them apart). Nothing that breaks standard behaviour is repaired or worked around. A refusal removes <code>sca/</code> and is a failure, exit 2: nothing can be reviewed.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 

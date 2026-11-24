@@ -28,12 +28,7 @@ import path from "node:path";
 
 import { ArchiveReader, libarchiveWasm } from "libarchive-wasm";
 
-import {
-  entryKey,
-  isSafeAddonPath,
-  namesCollide,
-  relativeInside,
-} from "./load.js";
+import { entryKey, isSafeAddonPath, relativeInside } from "./load.js";
 import { SOURCE_ARCHIVE_MAX_UNPACKED_BYTES } from "../config.js";
 import { trimEndOf } from "../util/text.js";
 
@@ -80,22 +75,28 @@ export function isSourceArchive(bytes) {
   );
 }
 
+/** A rejection of the archive, told apart from any other error an entry's extraction throws. */
+class SourceArchiveRefused extends Error {}
+
 /**
  * A refusal of the archive: why it cannot be extracted, naming the archive.
  * @param {string} archive
  * @param {string} why
- * @returns {Error}
+ * @returns {SourceArchiveRefused}
  */
 function refused(archive, why) {
-  return new Error(`Could not extract the source archive ${archive}: ${why}`);
+  return new SourceArchiveRefused(
+    `Could not extract the source archive ${archive}: ${why}`
+  );
 }
 
 /**
  * Extract a submitted source archive into `destDir`, a folder nothing is in yet, unpacking
  * its layers until the source appears. Refused - `destDir` removed, so no part of a tree is
- * ever reviewed - for an archive of no accepted type, one libarchive cannot read, an entry
- * whose name or type it will not take, a path twice, encrypted data, a link the platform
- * cannot create, or more than `maxBytes` unpacked.
+ * ever reviewed - for an archive of no accepted type, one libarchive cannot read to its end,
+ * an entry whose name is not UTF-8 or whose name or type it will not take, a path twice or
+ * inside a link, encrypted data, a link the platform cannot create, any other error writing
+ * an entry, or more than `maxBytes` unpacked.
  * @param {string} archive  The source archive, absolute.
  * @param {string} destDir  Where to write it.
  * @param {{maxBytes?: number}} [opts]  The unpacked-size cap, for a test to lower.
@@ -145,8 +146,9 @@ export async function extractSourceArchive(
 }
 
 /**
- * Write one layer's entries into `destDir`, each judged before its data is read, and return
- * the regular files written, as absolute paths.
+ * Write one layer's entries into `destDir`, each judged before anything of it is written, and
+ * return the regular files written, as absolute paths. A layer libarchive cannot read to its
+ * end is rejected after the loop, so no part of one is ever reviewed.
  * @param {object} lib  The libarchive module.
  * @param {Buffer} bytes  The layer's archive.
  * @param {string} destDir
@@ -162,105 +164,160 @@ function writeLayer(lib, bytes, destDir, archive, maxBytes) {
   } catch {
     throw refused(archive, "libarchive cannot read it");
   }
-  const files = [];
-  const keys = [];
-  const links = new Set();
-  let unpacked = 0;
+  const layer = {
+    destDir,
+    archive,
+    maxBytes,
+    files: [],
+    written: new Map(),
+    unpacked: 0,
+  };
   try {
     for (const entry of entriesOf(reader, archive)) {
-      const key = trimEndOf(entryKey(entry.getPathname()), "/");
-      const type = entry.getFiletype();
-      // The archive's own root folder ("./"), which names nothing.
-      if (key === "" && type === "Directory") {
-        continue;
-      }
-      // A name that steps out of the tree, is absolute, or can be spelled two ways: the
-      // rules the XPI's extraction holds a name to.
-      if (!isSafeAddonPath(key)) {
+      const raw = entry.getPathname();
+      try {
+        writeEntry(entry, raw, layer);
+      } catch (err) {
+        if (err instanceof SourceArchiveRefused) {
+          throw err;
+        }
         throw refused(
           archive,
-          `it holds an entry named "${key}", which leaves the archive`
+          `its entry "${raw}" could not be extracted: ${err.message}`
         );
       }
-      const dest = path.join(destDir, ...key.split("/"));
-      if (relativeInside(dest, destDir) === null) {
-        throw refused(
-          archive,
-          `it holds an entry named "${key}", which leaves the archive`
-        );
-      }
-      // A name inside a link the archive stored would be written wherever that link points,
-      // which no check of the name itself can see.
-      const via = linkAbove(key, links);
-      if (via) {
-        throw refused(
-          archive,
-          `its entry "${key}" lies inside the symbolic link "${via}"`
-        );
-      }
-      if (entry.isEncrypted()) {
-        throw refused(archive, `its entry "${key}" is encrypted`);
-      }
-      if (type === "Directory") {
-        fs.mkdirSync(dest, { recursive: true });
-        continue;
-      }
-      keys.push(key);
-      if (type === "SymbolicLink") {
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        writeLink(entry.getSymlinkTarget(), dest, key, archive);
-        links.add(key);
-        continue;
-      }
-      // A hard link is a second name for a file the archive already holds: no file of its
-      // own, and two names for one file have no single meaning.
-      if (type !== "File" || entry.getHardlinkTarget()) {
-        throw refused(
-          archive,
-          `its entry "${key}" is a ${entry.getHardlinkTarget() ? "hard link" : type}, ` +
-            "which a source archive may not hold"
-        );
-      }
-      // Bound decompression by the declared size before the data is read, then by the bytes
-      // that came back.
-      if (unpacked + entry.getSize() > maxBytes) {
-        throw refused(archive, `it unpacks to more than ${maxBytes} bytes`);
-      }
-      const data = entry.readData() ?? new Int8Array(0);
-      unpacked += data.length;
-      if (unpacked > maxBytes) {
-        throw refused(archive, `it unpacks to more than ${maxBytes} bytes`);
-      }
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, data);
-      files.push(dest);
+    }
+    // libarchive ends its entries the same way at the archive's end and at a read error: only
+    // the error it recorded tells them apart.
+    const why = lib.error_string(reader.archive);
+    if (why) {
+      throw refused(archive, `libarchive could not read it to the end: ${why}`);
     }
   } finally {
     reader.free();
   }
-  // Two entries naming one path, in any spelling or case: whichever was written last would
-  // be the one reviewed.
-  if (namesCollide(keys)) {
-    throw refused(archive, "it names one path twice");
-  }
-  return files;
+  return layer.files;
 }
 
 /**
- * The link among `links` that `key` lies inside, a folder of its own path, or undefined.
- * @param {string} key
- * @param {Set<string>} links  The keys of the links written so far.
- * @returns {string|undefined}
+ * Judge one entry and write it: a folder made, a link created, a file written.
+ * @param {import("libarchive-wasm").ArchiveReaderEntry} entry
+ * @param {string} raw  Its name as libarchive gives it, "" where that is not UTF-8.
+ * @param {{destDir: string, archive: string, maxBytes: number, files: string[],
+ *   written: Map<string, object>, unpacked: number}} layer  What the layer wrote so far
+ *   (judgeName says what `written` holds).
+ * @returns {void}
+ * @throws {SourceArchiveRefused}
  */
-function linkAbove(key, links) {
-  const segments = key.split("/");
+function writeEntry(entry, raw, layer) {
+  const { destDir, archive, maxBytes } = layer;
+  if (raw === "") {
+    throw refused(archive, "it holds an entry whose name is not UTF-8");
+  }
+  const key = trimEndOf(entryKey(raw), "/");
+  const type = entry.getFiletype();
+  // The archive's own root folder ("./"), which names nothing.
+  if (key === "" && type === "Directory") {
+    return;
+  }
+  // A name that steps out of the tree, is absolute, or can be spelled two ways: the rules the
+  // XPI's extraction holds a name to.
+  const dest = path.join(destDir, ...key.split("/"));
+  if (!isSafeAddonPath(key) || relativeInside(dest, destDir) === null) {
+    throw refused(
+      archive,
+      `it holds an entry named "${key}", which leaves the archive`
+    );
+  }
+  if (entry.isEncrypted()) {
+    throw refused(archive, `its entry "${key}" is encrypted`);
+  }
+  const kind =
+    type === "Directory" ? "folder" : type === "SymbolicLink" ? "link" : "file";
+  // A hard link is a second name for a file the archive already holds: no file of its own,
+  // and two names for one file have no single meaning.
+  if (kind === "file" && (type !== "File" || entry.getHardlinkTarget())) {
+    throw refused(
+      archive,
+      `its entry "${key}" is a ${entry.getHardlinkTarget() ? "hard link" : type}, ` +
+        "which a source archive may not hold"
+    );
+  }
+  judgeName(key, kind, layer);
+  if (kind === "folder") {
+    fs.mkdirSync(dest, { recursive: true });
+    return;
+  }
+  if (kind === "link") {
+    const target = entry.getSymlinkTarget();
+    if (target === "") {
+      throw refused(
+        archive,
+        `its link "${key}" points at a name that is not UTF-8`
+      );
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    writeLink(target, dest, key, archive);
+    return;
+  }
+  // Bound decompression by the declared size before the data is read, then by the bytes that
+  // came back.
+  if (layer.unpacked + entry.getSize() > maxBytes) {
+    throw refused(archive, `it unpacks to more than ${maxBytes} bytes`);
+  }
+  const data = entry.readData() ?? new Int8Array(0);
+  layer.unpacked += data.length;
+  if (layer.unpacked > maxBytes) {
+    throw refused(archive, `it unpacks to more than ${maxBytes} bytes`);
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, data);
+  layer.files.push(dest);
+}
+
+/**
+ * Judge an entry's name against every name the layer wrote before it, compared case-folded,
+ * since a case-insensitive disk takes `Lib` and `lib` as one name, and record it. Asked
+ * before anything of the entry is written: a name written twice would be written through
+ * whatever the first one left there, a link included. Rejected: a name written before (a
+ * folder named again as a folder aside), a name inside a file, and a name inside a link,
+ * which would be written wherever that link points.
+ * @param {string} key
+ * @param {"file"|"folder"|"link"} kind
+ * @param {{archive: string, written: Map<string, {kind: string, key: string}>}} layer
+ *   `written` maps each name written, case-folded, and every folder above one, to its kind
+ *   and its name as the archive spelled it.
+ * @returns {void}
+ * @throws {SourceArchiveRefused}
+ */
+function judgeName(key, kind, { archive, written }) {
+  const segments = key.toLowerCase().split("/");
   for (let i = 1; i < segments.length; i++) {
-    const folder = segments.slice(0, i).join("/");
-    if (links.has(folder)) {
-      return folder;
+    const above = segments.slice(0, i).join("/");
+    const was = written.get(above);
+    if (was?.kind === "link") {
+      throw refused(
+        archive,
+        `its entry "${key}" lies inside the symbolic link "${was.key}"`
+      );
+    }
+    if (was?.kind === "file") {
+      throw refused(archive, "it names one path twice");
     }
   }
-  return undefined;
+  const folded = segments.join("/");
+  const was = written.get(folded);
+  if (was && !(was.kind === "folder" && kind === "folder")) {
+    throw refused(archive, "it names one path twice");
+  }
+  const spelled = key.split("/");
+  for (let i = 1; i < segments.length; i++) {
+    written.set(segments.slice(0, i).join("/"), {
+      kind: "folder",
+      key: spelled.slice(0, i).join("/"),
+    });
+  }
+  written.set(folded, { kind, key });
 }
 
 /**
