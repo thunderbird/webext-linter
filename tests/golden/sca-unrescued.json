@@ -78,7 +78,7 @@
       "committed-build-artifact",
       "sca-invalid-symlink",
       "build-lifecycle-hook",
-      "build-reproduces-xpi",
+      "build-not-reproduced-confirm",
       "build-not-reproduced",
       "build-fails",
       "sca-not-needed",

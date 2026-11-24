@@ -2240,12 +2240,19 @@ function driveBuild(made, answer) {
   throw new Error(`never closed: ${seen.join(", ")}`);
 }
 
+/** The build question's answer that lets the review go on, whichever the entry offers: after
+ *  a self-build "Builds and reproduces", after an agent's build the override. */
+const buildGoesOn = (e) =>
+  (e?.answers ?? []).some((a) => a.label === BUILDS.built)
+    ? BUILDS.built
+    : "The XPI was correctly reproduced [override]";
+
 /** Every phase answered the way a review that goes on answers it. */
 const goesOn =
   (overrides = {}) =>
   (phase, e) =>
     overrides[phase]?.(e) ??
-    BUILDS[phase] ??
+    (phase === "built" ? buildGoesOn(e) : BUILDS[phase]) ??
     (phase === "verify"
       ? "withdrawn"
       : phase === "settle"
@@ -2351,8 +2358,8 @@ function untilPhase(made, phase) {
 // reviewer typed instead of a label are refused.
 test("each build answer that stops the review reports its own check", () => {
   for (const [said, rule] of [
-    ["Does not reproduce", "build-not-reproduced"],
-    ["Does not build", "build-fails"],
+    ["The built add-on does not match the submitted XPI", "build-not-reproduced"],
+    ["The build failed", "build-fails"],
   ]) {
     const made = buildQuestionsReview(tmp());
     const { seen, closing, settled } = driveBuild(
@@ -2571,7 +2578,7 @@ test("a case sent on with ask is dropped by an abort even after an earlier item 
     goesOn({
       settle: (e) =>
         instructionsAt(e.index) === "settle me" ? "ask" : "cleared",
-      built: () => "Does not build",
+      built: () => "The build failed",
     })
   );
   assert.equal(aborted(settled), true);
@@ -2773,14 +2780,40 @@ test("the build question's step text is worded by what came of the build", () =>
 });
 
 // The build question offers its own answers, and not the manual review's: whether the
-// source builds and reproduces the XPI, and if not, why.
+// source builds and reproduces the XPI, and if not, why. After a self-build, reproducing it
+// comes first. After an agent's build the linter could not confirm, the two reasons come
+// first and the override last, which lets the review go on and reports nothing.
 test("the build question offers its own three answers", () => {
   const made = buildQuestionsReview(tmp());
   const out = untilPhase(made, "built");
   assert.deepEqual(
     out.entries[0].answers.map((a) => a.label),
-    ["Builds and reproduces", "Does not reproduce", "Does not build"]
+    [
+      "Builds and reproduces",
+      "The built add-on does not match the submitted XPI",
+      "The build failed",
+    ]
   );
+  for (const build of [
+    { result: "built", output: "/w/build/dist", match: "no match" },
+    { result: "failed", output: null, match: null },
+  ]) {
+    const agent = buildQuestionsReview(tmp());
+    agent.record.build = build;
+    const asked = untilPhase(agent, "built");
+    assert.deepEqual(
+      asked.entries[0].answers.map((a) => a.label),
+      [
+        "The built add-on does not match the submitted XPI",
+        "The build failed",
+        "The XPI was correctly reproduced [override]",
+      ],
+      build.result
+    );
+    const { settled } = driveBuild(agent, goesOn());
+    assert.equal(agent.record.review.values.built, "override", build.result);
+    assert.equal(aborted(settled), false, build.result);
+  }
 });
 
 // Where nobody decided about the build in the build check (a build-guard check switched

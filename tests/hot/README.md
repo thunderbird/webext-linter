@@ -16,7 +16,10 @@ copy with the real npm or pnpm and builds the add-on, as the prompts say. The ag
 back until it reaches one of three stops, and goes no further:
 
 - **row 14:** the Build Review Details block, the first step of `built`. The agent shows the
-  block, ends its turn on it, and goes no further.
+  block, ends its turn on it, and goes no further. `built` is issued only where the build
+  question is asked: an agent's build the linter's comparison matched is not asked about,
+  and its review goes on past row 14. Every case here builds from a lock newer than its
+  XPI, so none matches and each still stops there.
 - **the abort:** the closing prompt of an aborted review. Every abort but a rejected
   Experiment or a forged lock comes late, so the agent first works through the sweeps,
   verify and settle, and then stops on it.

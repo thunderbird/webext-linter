@@ -24,6 +24,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SECTIONS } from "../../src/checks/registry-schema.js";
+import { selectionOf } from "../../src/pipeline.js";
+import { buildResultFact } from "../../src/report/loop.js";
+import { valuesOf } from "../../src/report/phases.js";
 import { ERROR_CLASS } from "../../src/lib/enum.js";
 import { LinterError } from "../../src/lib/errors.js";
 import { reviewData } from "../../src/review/products.js";
@@ -132,6 +135,7 @@ async function everyCheck(registry, opts = {}) {
   for (const decision of [
     {},
     { buildJudged: true, buildSafe: true },
+    { buildJudged: true, buildSafe: true, buildAttempted: true },
     { buildJudged: true, buildSafe: false },
   ]) {
     for (const c of allChecks(
@@ -937,33 +941,49 @@ test("where a check runs: the route says it, or the condition says what a route 
       "xpi-lock-file-invalid",
       "build-review",
       "build-reproduces-xpi",
+      "build-not-reproduced-confirm",
       "build-unsafe",
     ]
   );
   assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
   assert.deepEqual(runsIn("xpi-lock-file-invalid"), XPI_ONLY);
-  // The three build questions split every source review by the reviewer's build decision in
-  // the build check: build-review where nobody decided (a plain report, or an agent review
-  // with a build-guard check off), build-reproduces-xpi where they held the build safe, and
-  // build-unsafe where they held it unsafe. Exactly one runs in each.
-  const decided = {
-    "nobody decided": {},
-    "held safe": { buildJudged: true, buildSafe: true },
-    "held unsafe": { buildJudged: true, buildSafe: false },
-  };
-  for (const [name, decision] of Object.entries(decided)) {
+  // The build questions split every source review by the reviewer's build decision in the
+  // build check and by what came of the agent's build there: build-review where nobody
+  // decided (a plain report, or an agent review with a build-guard check off),
+  // build-reproduces-xpi where they held the build safe and built it themselves,
+  // build-not-reproduced-confirm where the agent's build did not match or failed, and
+  // build-unsafe where they held it unsafe. At most one runs, and none where the agent's
+  // build matched: the linter answered the question itself.
+  const questions = [
+    "build-review",
+    "build-reproduces-xpi",
+    "build-not-reproduced-confirm",
+    "build-unsafe",
+  ];
+  const safe = { buildJudged: true, buildSafe: true };
+  for (const [name, decision, asked] of [
+    ["nobody decided", {}, "build-review"],
+    ["self-build", safe, "build-reproduces-xpi"],
+    [
+      "agent built, no match",
+      { ...safe, buildAttempted: true },
+      "build-not-reproduced-confirm",
+    ],
+    [
+      "agent built, match",
+      { ...safe, buildAttempted: true, buildReproduced: true },
+      null,
+    ],
+    [
+      "held unsafe",
+      { buildJudged: true, buildSafe: false },
+      "build-unsafe",
+    ],
+  ]) {
     const facts = checkFacts({ sca: true, ...decision });
     assert.deepEqual(
-      ["build-review", "build-reproduces-xpi", "build-unsafe"].filter((id) =>
-        conditionEligible(by(id), facts)
-      ),
-      [
-        {
-          "nobody decided": "build-review",
-          "held safe": "build-reproduces-xpi",
-          "held unsafe": "build-unsafe",
-        }[name],
-      ],
+      questions.filter((id) => conditionEligible(by(id), facts)),
+      asked ? [asked] : [],
       name
     );
   }
@@ -987,6 +1007,64 @@ test("where a check runs: the route says it, or the condition says what a route 
   ]) {
     assert.equal(by(id).when, null, id);
     assert.deepEqual(runsIn(id), BOTH, id);
+  }
+});
+
+// The build question is worded by the check that raises it (the check facts, from the
+// pipeline's selection) and answered with the values the `built` phase offers (the loop's
+// build result fact). Both are read off the same build results in two places, so for every
+// build the reviewer held safe they must name the same build: the self-build question with
+// the self-build answers, the confirmation with the override, and neither where the agent's
+// build matched. A failed rescue pairs like any agent build, though `built` skips it as
+// unbuildable.
+test("the build question and its answers name the same build", () => {
+  const registry = loadRegistry();
+  const built = registry.llmPhases().phases.find((p) => p.name === "built");
+  const questions = ["build-reproduces-xpi", "build-not-reproduced-confirm"];
+  const AGENT = ["not-reproduced", "fails", "override"];
+  for (const [name, build, asked, values] of [
+    [
+      "self-build",
+      { safe: true, result: null, match: null },
+      "build-reproduces-xpi",
+      ["reproduces", "not-reproduced", "fails"],
+    ],
+    [
+      "agent built, no match",
+      { safe: true, result: "built", match: "no match" },
+      "build-not-reproduced-confirm",
+      AGENT,
+    ],
+    [
+      "agent build failed",
+      { safe: true, result: "failed", match: null },
+      "build-not-reproduced-confirm",
+      AGENT,
+    ],
+    [
+      "rescue failed",
+      { safe: true, result: "rescue-failed", match: null },
+      "build-not-reproduced-confirm",
+      AGENT,
+    ],
+    ["agent built, match", { safe: true, result: "built", match: "match" }, null, null],
+  ]) {
+    const facts = checkFacts(selectionOf({}, { mode: { sca: true } }, build));
+    assert.deepEqual(
+      questions.filter((id) =>
+        conditionEligible(registry.checkEntry(id), facts)
+      ),
+      asked ? [asked] : [],
+      name
+    );
+    if (values) {
+      const fact = buildResultFact({ build });
+      assert.deepEqual(
+        valuesOf(built, { [fact]: true }).map((v) => v.value),
+        values,
+        name
+      );
+    }
   }
 });
 
@@ -1041,6 +1119,7 @@ test("every escalating check lands in the section its reader implies", async () 
       "unused-permission",
     ],
     "manual-review": [
+      "build-not-reproduced-confirm",
       "build-reproduces-xpi",
       "build-review",
       "experiment-manual-review",
@@ -1081,6 +1160,7 @@ test("every check's severity is pinned to its band", async () => {
       "build-lifecycle-hook",
       "build-modifies-code",
       "build-not-reproduced",
+      "build-not-reproduced-confirm",
       "build-registry-redirect",
       "build-reproduces-xpi",
       "build-review",
@@ -2027,6 +2107,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-lifecycle-hook",
     "build-modifies-code",
     "build-not-reproduced",
+    "build-not-reproduced-confirm",
     "build-registry-redirect",
     "build-reproduces-xpi",
     "build-review",
@@ -6547,6 +6628,7 @@ test("review-downgrade marks the aborting checks of the archive and its build", 
       "build-fails",
       "build-lifecycle-hook",
       "build-not-reproduced",
+      "build-not-reproduced-confirm",
       "build-registry-redirect",
       "build-reproduces-xpi",
       "build-review",
@@ -6619,6 +6701,7 @@ test("llm-verification is false only where verify has nothing to judge", () => {
       "build-fails",
       "build-lifecycle-hook",
       "build-not-reproduced",
+      "build-not-reproduced-confirm",
       "build-registry-redirect",
       "build-reproduces-xpi",
       "build-review",

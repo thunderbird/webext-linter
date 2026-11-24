@@ -16,19 +16,22 @@
       <h2>What it asks</h2>
       <p class="lead">
         Under <code>--llm-review</code>, once the reviewer has held the build safe in the
-        preparation, it asks them how the build came out: does it complete, from a clean copy
-        with the dependencies installed exactly as the lock file pins them
-        (<code>npm ci</code>, or <code>pnpm install --frozen-lockfile</code>), and does its
-        result match the submitted XPI?
+        build check and chosen to build it themselves, it asks them how their build came out:
+        does it complete, from a clean copy with the dependencies installed exactly as the lock
+        file pins them (<code>npm ci</code>, or <code>pnpm install --frozen-lockfile</code>),
+        and does its result match the submitted XPI?
       </p>
       <p>
         Reproducing the build is the reviewer's attestation that the shipped XPI comes from
-        the source they read, which is what a source-code review rests on. The reviewer
-        answers by comparing the build output the review links, where the agent built the
-        add-on, or their own build, with the submitted XPI. It runs only where the reviewer
-        decided the build is safe (<code>when: build-judged AND build-safe</code>): a build
-        held unsafe is reported by <a href="build-unsafe.html"><code>build-unsafe</code></a>
-        and never built, and where nobody decided, a plain report included,
+        the source they read, which is what a source-code review rests on. It runs only where
+        the reviewer decided the build is safe and the agent did not build it
+        (<code>when: build-judged AND build-safe AND NOT build-attempted</code>). Where the
+        agent built it, the linter compares its build with the submitted XPI itself: a match
+        answers the question and nobody is asked, and otherwise
+        <a href="build-not-reproduced-confirm.html"><code>build-not-reproduced-confirm</code></a>
+        asks. A build held unsafe is reported by
+        <a href="build-unsafe.html"><code>build-unsafe</code></a> and never built, and where
+        nobody decided, a plain report included,
         <a href="build-review.html"><code>build-review</code></a> asks the whole build question.
       </p>
 
@@ -38,8 +41,8 @@
 flowchart TD
   A["The build, from a clean copy"] --> Q{"Does it complete, and does<br/>its result match the submitted XPI?"}
   Q -- "Builds and reproduces" --> OK([cleared: the review goes on])
-  Q -- "Does not reproduce" --> NR([ERROR: build-not-reproduced])
-  Q -- "Does not build" --> BF([ERROR: build-fails])
+  Q -- "The built add-on does not match<br/>the submitted XPI" --> NR([ERROR: build-not-reproduced])
+  Q -- "The build failed" --> BF([ERROR: build-fails])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -56,7 +59,8 @@ flowchart TD
         Details and before the sweeps - <code>ask</code> batches, and nobody may be asked to
         install an XPI in the same breath as being asked whether the source builds into it.
         Its three answers are <em>Builds and reproduces</em>, which clears it, and
-        <em>Does not reproduce</em> and <em>Does not build</em>, which clear it and report
+        <em>The built add-on does not match the submitted XPI</em> and <em>The build
+        failed</em>, which clear it and report
         <a href="build-not-reproduced.html"><code>build-not-reproduced</code></a> or
         <a href="build-fails.html"><code>build-fails</code></a>, so the developer is told why,
         and the review is aborted late.

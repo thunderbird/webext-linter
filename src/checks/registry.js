@@ -2357,19 +2357,34 @@ export function checkSelected(registry, id, { only, skip } = {}) {
  * @param {boolean} [opts.buildJudged]  The reviewer decided about the build in the
  *   build check, the `build-judged` fact.
  * @param {boolean} [opts.buildSafe]  That decision held it safe, the `build-safe` fact.
+ * @param {boolean} [opts.buildAttempted]  The build check recorded a result of the agent's
+ *   build, the `build-attempted` fact.
+ * @param {boolean} [opts.buildReproduced]  The agent built it and the linter's comparison
+ *   with the submitted XPI matched, the `build-reproduced` fact.
  *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
  *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
 export async function loadChecks(
   registry,
-  { only, skip, eslint, sca, buildJudged, buildSafe } = {}
+  {
+    only,
+    skip,
+    eslint,
+    sca,
+    buildJudged,
+    buildSafe,
+    buildAttempted,
+    buildReproduced,
+  } = {}
 ) {
   const facts = checkFacts({
     sca,
     eslint,
     buildJudged,
     buildSafe,
+    buildAttempted,
+    buildReproduced,
   });
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
@@ -2510,16 +2525,26 @@ export function conditionEligible(entry, facts) {
 
 /**
  * The facts a check's condition reads in a run: each of CHECK_FACTS that holds.
- * @param {{sca?: boolean, eslint?: boolean, buildJudged?: boolean, buildSafe?: boolean}} run
+ * @param {{sca?: boolean, eslint?: boolean, buildJudged?: boolean, buildSafe?: boolean,
+ *   buildAttempted?: boolean, buildReproduced?: boolean}} run
  * @returns {Set<string>}
  */
-export function checkFacts({ sca, eslint, buildJudged, buildSafe } = {}) {
+export function checkFacts({
+  sca,
+  eslint,
+  buildJudged,
+  buildSafe,
+  buildAttempted,
+  buildReproduced,
+} = {}) {
   return new Set(
     [
       sca ? "sca" : null,
       eslint ? "eslint" : null,
       buildJudged ? "build-judged" : null,
       buildSafe ? "build-safe" : null,
+      buildAttempted ? "build-attempted" : null,
+      buildReproduced ? "build-reproduced" : null,
     ].filter(Boolean)
   );
 }

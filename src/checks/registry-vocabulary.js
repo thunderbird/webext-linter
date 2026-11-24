@@ -193,11 +193,23 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *    (src/build-check/steps.js decision), which every agent source review does but one run
  *    with a build-guard check switched off;
  *  - `build-safe`: that decision held the build safe, the agent's verdict as the reviewer
- *    kept or overrode it.
+ *    kept or overrode it;
+ *  - `build-attempted`: the build check recorded a result of the agent's build (`built`,
+ *    `failed` or `rescue-failed`), exactly where the review loop's build result is not
+ *    `self-build`;
+ *  - `build-reproduced`: the agent built it, and the linter's comparison of what it built
+ *    with the submitted XPI matched (src/build-check/steps.js xpiMatch).
  *
  *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
  *  check's findings do not depend on them. */
-export const CHECK_FACTS = ["sca", "eslint", "build-judged", "build-safe"];
+export const CHECK_FACTS = [
+  "sca",
+  "eslint",
+  "build-judged",
+  "build-safe",
+  "build-attempted",
+  "build-reproduced",
+];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):

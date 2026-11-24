@@ -202,7 +202,6 @@ const detailRowsOf = (stdout) =>
 
 /** The answer a test reviewer and agent give an entry of a review's phase. */
 const WALK_ANSWERS = {
-  built: "Builds and reproduces",
   verify: "reported",
   settle: "cleared",
   ask: "Clear",
@@ -270,9 +269,11 @@ test("each details block holds every row of the block before it", () => {
     fs.writeFileSync(workPaths(work).answers, JSON.stringify(doc, null, 1));
     out = run(["--llm-handback", work]);
   }
+  // The agent's build matches the XPI, so the linter answered the build question itself and
+  // `built` is not issued: the next block the reviewer reads is at `ask`.
   assert.deepEqual(
     blocks.map(([name]) => name),
-    ["decision", "built", "ask", "close"]
+    ["decision", "ask", "close"]
   );
   const named = `* XPI_FILE: [${path.basename(xpi)}](${xpi})`;
   for (const [i, [name, rows]] of blocks.entries()) {
@@ -287,15 +288,6 @@ test("each details block holds every row of the block before it", () => {
       }
     }
   }
-  // The build block goes out before the description agent and the report.
-  assert.ok(
-    !blocks[1][1].some((row) =>
-      ["* ADDON_SUMMARY_REPORT: ", "* REVIEW_REPORT: "].some((n) =>
-        row.startsWith(n)
-      )
-    ),
-    blocks[1][1].join("\n")
-  );
   const final = blocks.at(-1)[1];
   for (const row of [
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",

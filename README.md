@@ -254,18 +254,25 @@ may hold the real source beside the copy.
     `curl|sh`, unpinned `git clone`, CDN or postinstall hook - and if it does not, not to
     build it, else to build it and compare the result with the shipped XPI. In `ask` its
     answers are `Builds fine and reproduces`, `Build issues`, or the reviewer's own words.
-  - Under `--llm-review` the reviewer makes **one decision about the build** in the
-    build check, right after reading the Build Review Details with the agent's build report
-    and its verdict. After a safe verdict they let the agent build or build it themselves,
-    after an unsafe one they trust it and build nothing, or clear the issues and let the
-    agent build anyhow, and after either they may override it with reasons of their own why
-    building is unsafe.
-  - **`build-reproduces-xpi`**, where that decision held the build safe: the review opens
-    with its build, before the sweeps, and asks alone how it came out, `Builds and
-    reproduces`, `Does not reproduce` or `Does not build`. The last two report
-    `build-not-reproduced` or `build-fails`, so the developer is told why the review stopped.
+  - Under `--llm-review` the reviewer decides about the build in the build check, right
+    after reading the Build Review Details with the agent's build report and its verdict.
+    After an unsafe verdict they first skip building, or override the verdict and continue
+    as if the build were safe. A build held safe is then put to them as the build decision:
+    they let the agent build or build it themselves, or hold it unsafe for reasons of their
+    own.
+  - Where the agent built it, the linter compares its build with the shipped XPI itself. A
+    match answers the build question, and nobody is asked.
+  - **`build-reproduces-xpi`**, where the reviewer held the build safe and built it
+    themselves: the review opens with its build, before the sweeps, and asks alone how it
+    came out, `Builds and reproduces`, `The built add-on does not match the submitted XPI`
+    or `The build failed`. The last two report `build-not-reproduced` or `build-fails`, so
+    the developer is told why the review stopped.
+  - **`build-not-reproduced-confirm`**, where the agent's build did not match or failed: the
+    same place in the review, asking "It seems as if the XPI could not be reproduced.
+    Please confirm." with `The built add-on does not match the submitted XPI`, `The build
+    failed` or `The XPI was correctly reproduced [override]`.
   - **`build-unsafe`**, where it held the build unsafe: it is reported at once, and nobody is
-    asked to build. Trusting the verdict reports each issue the agent's build analysis listed,
+    asked to build. Skipping the build reports each issue the agent's build analysis listed,
     at its file and line, and the reviewer's own reasons report those reasons instead. The
     agent hands its issues back as a list, which the linter writes to `build-issues.md` and
     links in the Build Review Details, and reads the verdict off: none is a safe build.
@@ -304,11 +311,12 @@ A section it never asks for is inert.
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
   check may carry a `when:` condition for what a route cannot say, over the facts known
-  before any check runs (`sca`, `eslint`, `build-judged`, `build-safe`), in the
-  syntax the loop's steps use: `when: NOT sca` keeps the two that judge the shipped XPI's own
-  lock out of a source review, `when: eslint` runs `code-sanity` only under `--eslint`, and
-  the reviewer's build decision picks which of `build-review`, `build-reproduces-xpi` and
-  `build-unsafe` asks about the build.
+  before any check runs (`sca`, `eslint`, `build-judged`, `build-safe`,
+  `build-attempted`, `build-reproduced`), in the syntax the loop's steps use:
+  `when: NOT sca` keeps the two that judge the shipped XPI's own lock out of a source review,
+  `when: eslint` runs `code-sanity` only under `--eslint`, and the reviewer's build decision
+  and what came of the agent's build pick which of `build-review`, `build-reproduces-xpi`,
+  `build-not-reproduced-confirm` and `build-unsafe` asks about the build, or that none does.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
@@ -358,11 +366,12 @@ report gives, under one of two keys in the registry.
 `sca-xpi-fully-included-in-archive` names *source archive contains the built XPI*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
 names *disallowed library versions*, `minified-code` and `untrusted-minified-library` name
-*code that cannot be reviewed*, and the thirteen that decide a source submission cannot be
+*code that cannot be reviewed*, and the fourteen that decide a source submission cannot be
 built from - `sca-package-file-missing`, `sca-package-file-invalid`,
 `sca-lock-file-missing`, `sca-lock-file-invalid`, `sca-lock-file-multiple`,
 `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
-`build-review`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
+`build-review`, `build-reproduces-xpi`, `build-not-reproduced-confirm`,
+`build-not-reproduced`, `build-fails` and
 `build-unsafe` - name *build process issues*. Their error stops nothing while the review
 runs: every check still runs, and under `--llm-review` the build question, the sweeps,
 verify and settle run as usual, so verify can withdraw a wrong finding first (never a person's

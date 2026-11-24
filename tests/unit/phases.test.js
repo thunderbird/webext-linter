@@ -504,15 +504,31 @@ test("a process value may be offered under a condition, checked as a step's is",
 });
 
 // The build question asks the outcome only, in every run: whether the build is safe was the
-// reviewer's decision in the build check.
+// reviewer's decision in the build check. After a self-build it offers reproducing first,
+// after an agent's build the linter could not confirm the override last.
 test("the build question offers the three outcomes", () => {
   const built = fresh()
     .llmPhases()
     .phases.find((p) => p.name === "built");
   assert.deepEqual(
-    valuesOf(built, {}).map((v) => v.label),
-    ["Builds and reproduces", "Does not reproduce", "Does not build"]
+    valuesOf(built, { "self-build": true }).map((v) => v.label),
+    [
+      "Builds and reproduces",
+      "The built add-on does not match the submitted XPI",
+      "The build failed",
+    ]
   );
+  for (const fact of ["agent-built", "agent-build-failed"]) {
+    assert.deepEqual(
+      valuesOf(built, { [fact]: true }).map((v) => v.label),
+      [
+        "The built add-on does not match the submitted XPI",
+        "The build failed",
+        "The XPI was correctly reproduced [override]",
+      ],
+      fact
+    );
+  }
 });
 
 // A phase offers no answers of its own: a person is offered the manual review's answers.

@@ -33,6 +33,7 @@ import { withSourceCache } from "./vendor/source-cache.js";
 import { governingLock, unreadableLock } from "./vendor/locks.js";
 import {
   BUILD_CHECK_STEP,
+  BUILD_RESULT,
   buildCheckBody,
   originalPackages,
 } from "./build-check/state.js";
@@ -285,15 +286,17 @@ export async function runPipeline(opts) {
 }
 
 /**
- * What the checks are selected by: the check lists, --eslint, the review mode, and the
- * reviewer's build decision in the build check, which decides which of the build checks asks
- * about the build (build-review, build-reproduces-xpi, build-unsafe).
+ * What the checks are selected by: the check lists, --eslint, the review mode, the
+ * reviewer's build decision in the build check, and what came of the agent's build there,
+ * which together decide which of the build checks asks about the build (build-review,
+ * build-reproduces-xpi, build-not-reproduced-confirm, build-unsafe), or that none asks: an
+ * agent's build the linter compared as `match` answers the question itself.
  * @param {PipelineOpts} opts
  * @param {ReviewContext} ctx
  * @param {?object} build  The build results of a build check done in the folder, or null.
  * @returns {object}
  */
-function selectionOf(opts, ctx, build) {
+export function selectionOf(opts, ctx, build) {
   return {
     only: opts.checksOnly,
     skip: opts.checksSkip,
@@ -301,6 +304,12 @@ function selectionOf(opts, ctx, build) {
     sca: ctx.mode.sca,
     buildJudged: typeof build?.safe === "boolean",
     buildSafe: build?.safe === true,
+    // Any result the build check recorded of the agent's build, a failed rescue's included:
+    // exactly where the review loop's build result is not `self-build` (src/report/loop.js
+    // buildResultFact), so the build question and its answers name the same build.
+    buildAttempted: Object.values(BUILD_RESULT).includes(build?.result),
+    buildReproduced:
+      build?.result === BUILD_RESULT.built && build?.match === "match",
   };
 }
 

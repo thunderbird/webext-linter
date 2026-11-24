@@ -1438,14 +1438,16 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build question of an agent review whose reviewer judged the build safe in the
-# build check (`when: build-judged AND build-safe`). Reproducing the build is the reviewer's
-# attestation that the shipped XPI comes from the source they read, which is what an SCA
-# review rests on. So a source that does not build into the shipped XPI ends the review
-# before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
-# (`asked-in: built`), right after the Build Review Details and before the sweeps, except of
-# a source a build is impossible from (`unbuildable`), which is never asked. That phase
-# relays this text as its question and offers its own three answers (`values`): two of them
-# report the check below that names the reason, so the developer is told why.
+# build check and built it themselves (`when: build-judged AND build-safe AND NOT
+# build-attempted`). Where the agent built it, the linter's comparison answers it, or
+# build-not-reproduced-confirm asks. Reproducing the build is the reviewer's attestation that
+# the shipped XPI comes from the source they read, which is what an SCA review rests on. So a
+# source that does not build into the shipped XPI ends the review before anyone is asked to
+# install that XPI. Asked ALONE, in a phase of its own (`asked-in: built`), right after the
+# Build Review Details and before the sweeps, except of a source a build is impossible from
+# (`unbuildable`), which is never asked. That phase relays this text as its question and
+# offers its own answers for a self-build (`values`): two of them report the check below that
+# names the reason, so the developer is told why.
 - title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
@@ -1454,7 +1456,7 @@ deterministic-phase:
   llm-verification: false
   review-downgrade: true
   input: sca
-  when: build-judged AND build-safe
+  when: build-judged AND build-safe AND NOT build-attempted
   asked-in: built
   review-late-exit: unreproducible-build
   instructions-for-human: |-
@@ -1463,6 +1465,30 @@ deterministic-phase:
     dependencies exactly as the lock file pins them (npm ci, or pnpm install
     --frozen-lockfile). An install refused because package.json and the lock
     file disagree is a failed build.
+  response: |-
+    The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
+
+# SCA only: the build question of an agent review where the agent built the add-on in the build
+# check and the linter could not confirm it: its comparison with the submitted XPI found no
+# match, or the build failed (`when: build-judged AND build-safe AND build-attempted AND NOT
+# build-reproduced`). Where it matched, the linter has answered the question and nobody is
+# asked. A failed rescue raises it too, as an agent's build, but `built` skips such a source as
+# unbuildable. Asked ALONE in the `built` phase, which offers the answers for an agent's build: the
+# two that report the reason the review stops, and the override, where the reviewer finds
+# the XPI reproduced after all.
+- title: Confirming the XPI could not be reproduced
+  severity: error
+  check: build-not-reproduced-confirm
+  # Raises a case only, never a finding: its outcome is reported by build-not-reproduced
+  # or build-fails. So verify has nothing of this check to audit.
+  llm-verification: false
+  review-downgrade: true
+  input: sca
+  when: build-judged AND build-safe AND build-attempted AND NOT build-reproduced
+  asked-in: built
+  review-late-exit: unreproducible-build
+  instructions-for-human: |-
+    It seems as if the XPI could not be reproduced. Please confirm.
   response: |-
     The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
@@ -3119,8 +3145,11 @@ llm-phases:
     # starts with the reviewer's build decision recorded there (src/pipeline.js). The agent built
     # the add-on in the build check where the reviewer let it, and otherwise the reviewer builds
     # it. A build the reviewer judged unsafe is never asked about: `built` relays
-    # build-reproduces-xpi, which runs only where they judged it safe. A source no build can be
-    # made from (`unbuildable`) skips `built` too.
+    # build-reproduces-xpi after a self-build and build-not-reproduced-confirm after an agent's
+    # build the linter could not confirm, both only where they judged it safe. An agent's build
+    # the linter's comparison matched is not asked about either: neither check runs, so no to-do
+    # opens and `built` is not issued. A source no build can be made from (`unbuildable`) skips
+    # `built` too.
     #
     # A BLOCK THE REVIEWER MUST READ ENDS THE AGENT'S TURN. Text written before a tool call in
     # the same turn - a question, a hand-back - is folded away by a client that collapses
@@ -3135,9 +3164,10 @@ llm-phases:
     # asked whether the source builds into it. A PROCESS VALUE (`answer: value`) whose entry
     # relays the open to-do a check routes here (`asked-in`), so it is issued only while that
     # to-do is open and never in an XPI review. Any answer clears that to-do. It asks the
-    # outcome only, since the reviewer decided whether the build is safe in the build check. One
-    # of the three lets the review go on, and each of the other two reports the check naming
-    # the reason the review stops (`reports`).
+    # outcome only, since the reviewer decided whether the build is safe in the build check. It
+    # offers three answers: after a self-build `reproduces` first, after an agent's build the
+    # `override` last (each by its `when:`). One of the three lets the review go on, and each
+    # of the other two reports the check naming the reason the review stops (`reports`).
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
     # read, the build report and the safety verdict, the vulnerabilities counted in the submitted
@@ -3154,14 +3184,19 @@ llm-phases:
         - value: reproduces
           label: Builds and reproduces
           description: The build completes and its result matches the submitted XPI. The review goes on.
+          when: self-build
         - value: not-reproduced
-          label: Does not reproduce
+          label: The built add-on does not match the submitted XPI
           description: The build completes, but its result does not match the submitted XPI.
           reports: build-not-reproduced
         - value: fails
-          label: Does not build
+          label: The build failed
           description: The build fails, including an install refused because package.json and the lock file disagree.
           reports: build-fails
+        - value: override
+          label: The XPI was correctly reproduced [override]
+          description: The build completes and its result matches the submitted XPI. The review goes on.
+          when: NOT self-build
       steps:
         - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable
           text: |-

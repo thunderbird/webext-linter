@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Confirming the XPI could not be reproduced</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Confirming the XPI could not be reproduced
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">build-not-reproduced-confirm</div>
+      </header>
+
+      <h2>What it asks</h2>
+      <p class="lead">
+        Under <code>--llm-review</code>, where the agent built the add-on in the
+        build check, the linter compares what it built with the submitted XPI:
+        the same files at the same paths, each with the same contents, where
+        only line endings may differ. A match proves that the shipped XPI comes
+        from the source the review reads, so nobody is asked. This check asks
+        only where the linter could not confirm it: the comparison found no
+        match, or the agent's build failed. It asks the reviewer: "It seems as
+        if the XPI could not be reproduced. Please confirm."
+      </p>
+      <p>
+        It runs only where the reviewer held the build safe and the agent's
+        build did not reproduce the XPI (<code
+          >when: build-judged AND build-safe AND build-attempted AND NOT
+          build-reproduced</code
+        >). Where the reviewer built the add-on themselves,
+        <a href="build-reproduces-xpi.html"
+          ><code>build-reproduces-xpi</code></a
+        >
+        asks instead.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The agent's build"] --> M{"Does the linter's comparison<br/>match the submitted XPI?"}
+  M -- yes --> NA([nothing is asked: the review goes on])
+  M -- "no, or the build failed" --> Q{"It seems as if the XPI could<br/>not be reproduced. Please confirm."}
+  Q -- "The built add-on does not match<br/>the submitted XPI" --> NR([ERROR: build-not-reproduced])
+  Q -- "The build failed" --> BF([ERROR: build-fails])
+  Q -- "The XPI was correctly reproduced<br/>[override]" --> OK([cleared: the review goes on])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class NR,BF err;
+  class OK,NA ok;
+  class Q manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        It is asked ALONE, in the <code>built</code> phase, right after the
+        Build Review Details, which show the agent's build and the linter's
+        comparison (<code>LLM_BUILD_XPI_MATCH</code>). Two answers clear it and
+        report
+        <a href="build-not-reproduced.html"
+          ><code>build-not-reproduced</code></a
+        >
+        or <a href="build-fails.html"><code>build-fails</code></a
+        >, so the developer is told why, and the review is aborted late. The
+        override clears it, and the review goes on.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/build-not-reproduced-confirm.js</code> and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -644,11 +644,21 @@ test("a review of a source the agent built opens on its Build Review Details", a
   const started = readJson(work, "state");
   const state = started.current;
   assert.equal(state.phase, "built");
-  // The reviewer let the agent build, so the build question does not offer to call the
-  // build unsafe.
+  // The agent's build does not match the XPI, so the linter could not confirm it: the
+  // reviewer is asked to confirm, with the override last, and the build question does not
+  // offer to call the build unsafe.
+  const [asked] = readJson(work, "answers").entries;
+  assert.match(
+    asked.message,
+    /It seems as if the XPI could not be reproduced\. Please confirm\./
+  );
   assert.deepEqual(
-    readJson(work, "answers").entries[0].answers.map((a) => a.label),
-    ["Builds and reproduces", "Does not reproduce", "Does not build"]
+    asked.answers.map((a) => a.label),
+    [
+      "The built add-on does not match the submitted XPI",
+      "The build failed",
+      "The XPI was correctly reproduced [override]",
+    ]
   );
   const { build } = started;
   assert.deepEqual(
@@ -691,5 +701,46 @@ test("a review of a source the agent built opens on its Build Review Details", a
     [...at].sort((a, b) => a - b),
     "the rows are in their order"
   );
+  fs.rmSync(source, { recursive: true, force: true });
+});
+
+// An agent's build the linter's comparison matched answers the build question itself: no
+// build question opens, so the review does not open on `built` and goes on to its passes,
+// and the comparison is what the details show.
+test("a review of a source the agent built and the linter matched asks no build question", async () => {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "wl-matched-"));
+  fs.cpSync(path.join(fixture, "src"), source, { recursive: true });
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  fs.writeFileSync(path.join(source, "package.json"), JSON.stringify(own));
+  fs.writeFileSync(
+    path.join(source, "package-lock.json"),
+    JSON.stringify({ ...own, lockfileVersion: 3, packages: { "": own } })
+  );
+  const { work, record } = await realBuildCheck({
+    source,
+    xpi: path.join(fixture, "xpi"),
+    flags: {
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CDN_CACHE,
+      "cache-npm-registry-dir": CACHE,
+    },
+    cache: auditCache({}),
+    match: "match",
+  });
+  assert.equal(record.build.result, "built");
+  assert.equal(record.build.match, "match");
+  const r = run(["--llm-handback", work]);
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  const started = readJson(work, "state").current;
+  assert.notEqual(started.phase, "built", "no build question is asked");
+  for (const ruleId of ["build-reproduces-xpi", "build-not-reproduced-confirm"]) {
+    assert.ok(
+      !started.manual.some((m) => m.ruleId === ruleId),
+      `${ruleId} raises nothing`
+    );
+  }
   fs.rmSync(source, { recursive: true, force: true });
 });
