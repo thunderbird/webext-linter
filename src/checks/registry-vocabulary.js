@@ -343,10 +343,16 @@ export const BUILD_OVERRIDE_VALUES = ["skip", "continue"];
 /** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
  *  reviewer's one decision about a build held safe, by the verdict or by their override. The
  *  agent builds a clean lock (`allow`), or tries to rescue a vulnerable one and build it
- *  (`rescue`), each offered only where the audit says so (its `when:`), or the reviewer
- *  builds it (`manual`). Offered once each (assertScaPrompt). An answer in the reviewer's own
- *  words is none of them: it holds the build unsafe, for the reasons it gives. */
-export const BUILD_DECISION_VALUES = ["allow", "rescue", "manual"];
+ *  (`rescue`), or the reviewer builds it, worded for a clean lock (`manual`) or a vulnerable
+ *  one (`manual-vulnerable`), each offered only where the audit says so (its `when:`). Each id
+ *  is authored once (assertScaPrompt). An answer in the reviewer's own words is none of them:
+ *  it holds the build unsafe, for the reasons it gives. */
+export const BUILD_DECISION_VALUES = [
+  "allow",
+  "rescue",
+  "manual",
+  "manual-vulnerable",
+];
 
 /** The verdicts the build check records of the build the agent reported, by id: read off the
  *  SCA_BUILD_SAFETY_ISSUES list the agent hands back, `unsafe` where it holds an entry

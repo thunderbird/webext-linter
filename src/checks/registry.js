@@ -1942,8 +1942,16 @@ export function assertScaPrompt(registry, at) {
       );
     }
   }
-  // Every answer is read as one of its ids, so each is offered once, under a label of its
-  // own: a missing one could not be chosen, and two equal labels would read as either.
+  // Every answer is read as one of its ids, so each is authored once: a missing one could not
+  // be chosen. What one build is offered is checked per build, over every combination of the
+  // facts these prompts know: at least one answer, so the question never asks with nothing to
+  // answer, and each under a label of its own, since two equal labels would read as either.
+  // Two answers that are never offered together may share a label (`manual` and
+  // `manual-vulnerable`, both "Build it myself").
+  const builds = SCA_PROMPT_FACTS.reduce(
+    (sets, fact) => sets.flatMap((s) => [s, new Set([...s, fact])]),
+    [new Set()]
+  );
   for (const [key, values, ids] of [
     ["build-override", prompt["build-override"].values, BUILD_OVERRIDE_VALUES],
     ["build-decision", prompt["build-decision"].values, BUILD_DECISION_VALUES],
@@ -1963,13 +1971,8 @@ export function assertScaPrompt(registry, at) {
         );
       }
     }
-    if (new Set(values.map((v) => v.label)).size !== values.length) {
-      throw new Error(
-        `${where} \`${key}\` offers one label twice - an answer would read as either`
-      );
-    }
     // An answer may be offered under a `when:` over the facts these prompts know, as a
-    // step may, and at least one carries none, so the question always has one to offer.
+    // step may.
     for (const v of values) {
       if (v.when !== undefined) {
         assertCondition(
@@ -1980,11 +1983,23 @@ export function assertScaPrompt(registry, at) {
         );
       }
     }
-    if (values.every((v) => v.when !== undefined)) {
-      throw new Error(
-        `${where} \`${key}\` offers every value under a \`when\` - at least one must be ` +
-          "offered for every build, or the question could ask with nothing to answer"
+    for (const facts of builds) {
+      const offered = values.filter(
+        (v) => v.when === undefined || holds(parseCondition(v.when), facts)
       );
+      const named = facts.size ? [...facts].join(", ") : "none of its facts";
+      if (offered.length === 0) {
+        throw new Error(
+          `${where} \`${key}\` offers nothing to a build where ${named} hold(s) - every ` +
+            "build must be offered an answer, or the question asks with nothing to answer"
+        );
+      }
+      if (new Set(offered.map((v) => v.label)).size !== offered.length) {
+        throw new Error(
+          `${where} \`${key}\` offers one label twice to a build where ${named} hold(s) - ` +
+            "an answer would read as either"
+        );
+      }
     }
   }
 }

@@ -2886,11 +2886,12 @@ llm-sca-review-prompt:
   # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). Its answers
   # follow the audit at `analyze`: for a lock with a high or critical advisory
   # (`build-vulnerable`) the agent tries to rescue it (`rescue`), for any other it builds the
-  # lock as submitted (`allow`), and either way the reviewer may build it themselves
-  # (`manual`). An answer is the label of one of the answers offered, or the reviewer's own
+  # lock as submitted (`allow`), and either way the reviewer may build it themselves, worded for
+  # each (`manual` for a clean lock, `manual-vulnerable` for one whose vulnerabilities then end
+  # the review). An answer is the label of one of the answers offered, or the reviewer's own
   # words: the build is unsafe, for the reasons they give, and build-unsafe reports it. `allow`
-  # and `rescue` let the agent build, and `manual` leaves the build to the reviewer, whom the
-  # `built` question asks of their own build.
+  # and `rescue` let the agent build, and both `manual` answers leave the build to the
+  # reviewer, whom the `built` question asks of their own build.
   build-decision:
     question: |-
       Let the agent build the add-on, including its package-manager commands, or build it yourself? To hold the build unsafe instead, answer in your own words why building it is unsafe.
@@ -2905,7 +2906,12 @@ llm-sca-review-prompt:
         when: NOT build-vulnerable
       - value: manual
         label: Build it myself
-        description: The agent runs none of its commands. You answer the build question from your own build. Where the lock has known high or critical vulnerabilities, nothing is rescued and they end the review.
+        description: The agent runs none of its commands. You build the add-on yourself and answer the build question from your own build.
+        when: NOT build-vulnerable
+      - value: manual-vulnerable
+        label: Build it myself
+        description: The agent runs none of its commands, so nothing is rescued. You build the add-on yourself and answer the build question from your own build, and the known high or critical vulnerabilities in the lock end the review.
+        when: build-vulnerable
   # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
   # LLM_BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.

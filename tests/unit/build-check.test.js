@@ -778,6 +778,40 @@ test("a vulnerable lock's decision offers the rescue, not the plain build", asyn
   cleanup(overridden);
 });
 
+// "Build it myself" is worded by the audit too: for a clean lock it says only that the
+// reviewer builds, for a vulnerable one that nothing is rescued and the vulnerabilities end
+// the review. Chosen on a vulnerable lock it holds the build safe, lets the agent build
+// nothing, and the folder is done.
+test("building it yourself is worded by the lock's audit", async () => {
+  const built = (work) =>
+    reviewEntries(work)[0].answers.find((a) => a.label === "Build it myself")
+      .description;
+  const clean = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_CLEAN }
+  );
+  await analyzeStep(clean);
+  assert.ok(!built(clean).includes("rescued"), built(clean));
+  assert.ok(!built(clean).includes("vulnerabilities"), built(clean));
+  cleanup(clean);
+  const vulnerable = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_HIGH }
+  );
+  await analyzeStep(vulnerable);
+  assert.match(built(vulnerable), /nothing is rescued/);
+  assert.match(built(vulnerable), /vulnerabilities in the lock end the review/);
+  answer(vulnerable, { SCA_BUILD_DECISION: "Build it myself" });
+  const at = await stepOn(vulnerable);
+  assert.equal(at.next, "review");
+  const { packageManagers, buildSafe, buildResult, step } = at.record.current;
+  assert.deepEqual(
+    [packageManagers, buildSafe, buildResult, step],
+    [false, true, null, BUILD_CHECK_STEP.done]
+  );
+  cleanup(vulnerable);
+});
+
 // Each answer of the decision, after a safe verdict or an overridden unsafe one: whether the
 // build is held safe, whether the agent builds it, and the reviewer's own words as the reasons
 // for holding it unsafe. Only an answer that lets the agent build goes on to the audit, whose
