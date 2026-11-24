@@ -110,7 +110,10 @@ agent names the Experiment folder where the add-on declares Experiments (the
 review itself.
 
 The agent audits each finding, settles what the scans could not, and puts the rest to a
-reviewer - the linter decides what is asked and what an answer may say. The whole round
+reviewer - the linter decides what is asked and what an answer may say. Where the add-on
+sends data to a service the developer chose, the reviewer is asked to paste the privacy
+policy from the add-on's ATN listing, and the agent judges each case against it before
+anything else is put to the reviewer. The whole round
 trip, the phases, the answer vocabulary and what the reviewer is handed are specified in
 **[docs/spec.html](docs/spec.html#agent-handed)**, section 5 "What the agent is handed".
 

@@ -1811,12 +1811,24 @@ deterministic-phase:
     The add-on reaching a service the DEVELOPER chose - fixed in the add-on, not
     entered by the user - which receives anything about the user or their use of it.
   response: |-
-    Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
+    Please add a privacy policy to this add-on, or extend the existing one, so that it details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
     [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
     [2]: https://www.mozilla.org/en-US/privacy/
   # The agent screens the premise; it cannot reach the listing, so it cannot settle the
-  # case - which is why it is offered no way to report one.
+  # case - which is why it is offered no way to report one. A case it sends on with `ask`
+  # goes to `privacy-policy`, where the reviewer pastes the listing's policy and the agent
+  # judges the case against it (`sent-on-instruction`).
   settle-verbs: [cleared, ask]
+  sent-on-to: privacy-policy
+  sent-on-instruction: |-
+    The location below sends data to the remote host named in "item", which you
+    confirmed when you screened this case. Judge it only against the privacy policy
+    the reviewer pasted. Clear it only if that policy names this service, or one
+    plainly the same, and says what about the user is sent there. Report it if the
+    listing has no privacy policy, or if the policy leaves out this service or what
+    is sent to it. Ask only if the policy speaks of it in terms you cannot match to
+    this location. Do not clear it because the policy promises in general terms to
+    protect the user's data, because that discloses nothing about this service.
   instructions-for-llm: |-
     The location below sends data to a remote host this add-on names itself. Confirm
     both halves of that against the package: that the destination is fixed in the
@@ -3386,6 +3398,32 @@ llm-phases:
             {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
+
+    # Judges the cases `settle` sent on to it (`sent-on-to`) against the privacy policy on the
+    # add-on's ATN listing, which only the reviewer can reach: they paste it, and the agent
+    # judges each case against what they pasted. Issued only while such a case is open, so a
+    # review whose cases were all cleared is never asked for the policy. Not `ends-turn`: it
+    # shows no details block, and the reviewer's reply is the policy itself. The paste stays
+    # with the agent, and only the verdicts come back. What the policy does not let the agent
+    # tell goes on to `ask`.
+    - name: privacy-policy
+      answer: verdict
+      verbs: [reported, cleared, ask]
+      verb-prose:
+        reported:
+          says: The listing has no privacy policy, or it does not disclose this.
+        cleared:
+          says: The privacy policy discloses this.
+        ask:
+          says: The privacy policy does not let you tell.
+      intro: ""
+      steps:
+        - when: NOT aborted
+          text: |-
+            Ask the reviewer to paste the privacy policy shown on this add-on's listing on addons.thunderbird.net, or to reply that the listing has none. Write this as plain text, as the last thing you write this turn, and use no question tool: the policy is long text. Then end your turn, and go on with the next step only once the reviewer has replied.
+        - when: NOT aborted
+          text: |-
+            Judge every entry in the file against what the reviewer pasted, following that entry's "instructions". Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Where the reviewer replied that the listing has none, every entry is answered with "reported".
 
     # Puts what only a person can answer to a person. Its first steps hand the reviewer the
     # Review Details block before the questions: what this review is, and where to read it

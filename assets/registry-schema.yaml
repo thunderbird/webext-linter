@@ -160,6 +160,16 @@ shapes:
       why: >-
         it names the loop phase a person is asked this check's question in, alone, where it
         cannot wait in the batch beside the others
+    sent-on-to:
+      kind: text
+      why: >-
+        it names the loop phase a case is sent on to where the agent answers it with `ask`
+        in `settle`, in place of `ask`, so it is judged there against what a person hands it
+    sent-on-instruction:
+      kind: text
+      why: >-
+        what the agent is told to judge a case against in the phase it was sent on to, in
+        place of the wording it screened the case's premise by in `settle`
     manual-choices:
       kind: entries
       shape: choice-entry
@@ -227,6 +237,8 @@ shapes:
     review-early-exit: *only-a-check-that-runs
     review-late-exit: *only-a-check-that-runs
     asked-in: *only-a-check-that-runs
+    sent-on-to: *only-a-check-that-runs
+    sent-on-instruction: *only-a-check-that-runs
     review-downgrade: *only-a-check-that-runs
     review-unbuildable: *only-a-check-that-runs
     llm-verification: *only-a-check-that-runs

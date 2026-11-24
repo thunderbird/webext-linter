@@ -16,6 +16,7 @@ import {
 import {
   loadRegistry,
   assertAskedIn,
+  assertSentOnTo,
   assertPhases,
   assertEntries,
   assertRequiredSections,
@@ -398,6 +399,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
+      ["privacy-policy", "verdict", 3],
       ["ask", "words", 0],
       ["close", "end", 0],
     ]
@@ -884,6 +886,44 @@ test("asked-in names a phase a person answers, on a question only a person answe
     () => assertAskedIn(screened, "t.yaml"),
     /is not a question only a person answers/
   );
+});
+
+// A case sent on from settle goes to a verdict phase between settle and ask that accepts
+// `ask`: one before settle is passed over once the case reaches it, one after ask leaves what
+// the agent cannot tell nowhere to go, and one without `ask` cannot hand it to a person. Its
+// check offers `ask` in settle, and authors the instruction the case is judged by there.
+test("sent-on-to names a verdict phase between settle and ask, with its own instruction", () => {
+  const entry = (r) =>
+    r.doc["deterministic-phase"].find((e) => e.check === "privacy-policy");
+  assertSentOnTo(fresh(), "t.yaml");
+
+  const notBetween =
+    /is sent on to `[\w-]+`, which is not a verdict phase between `settle` and `ask` that accepts `ask`/;
+  for (const [mutate, refusal] of [
+    [(r) => (entry(r)["sent-on-to"] = "nowhere"), /is sent on to `nowhere`/],
+    [(r) => (entry(r)["sent-on-to"] = "verify"), notBetween],
+    [(r) => (entry(r)["sent-on-to"] = "ask"), notBetween],
+    [
+      (r) => (phaseNamed(r, "privacy-policy").verbs = ["reported", "cleared"]),
+      notBetween,
+    ],
+    [
+      (r) => (entry(r)["settle-verbs"] = ["cleared"]),
+      /offers no `ask` in `settle`, so no case of it is ever sent on/,
+    ],
+    [
+      (r) => delete entry(r)["sent-on-instruction"],
+      /authors one of `sent-on-to` and `sent-on-instruction` without the other/,
+    ],
+    [
+      (r) => delete entry(r)["sent-on-to"],
+      /authors one of `sent-on-to` and `sent-on-instruction` without the other/,
+    ],
+  ]) {
+    const wrong = fresh();
+    mutate(wrong);
+    assert.throws(() => assertSentOnTo(wrong, "t.yaml"), refusal);
+  }
 });
 
 // The preamble's parts are conditioned and printed like steps, so they are checked like

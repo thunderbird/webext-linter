@@ -1991,6 +1991,109 @@ test("a late-exit finding verify withdrew aborts nothing", () => {
   assert.equal(aborted(closing.settled), false);
 });
 
+// ---- a case sent on to a phase of its own (`sent-on-to`) ----
+
+/** Make the fixture's code-review case a privacy-policy case, as its check renders it. */
+function asPolicyCase(made) {
+  const id = "privacy-policy";
+  Object.assign(
+    made.state.manual.find((m) => m.ruleId === "unknown-api"),
+    {
+      ruleId: id,
+      item: "api.example.com",
+      settleVerbs: REGISTRY.settleVerbsFor(id),
+      sentOnTo: REGISTRY.sentOnTo(id),
+      sentOnInstruction: REGISTRY.sentOnInstruction(id),
+    }
+  );
+  refed(made.state);
+  return made;
+}
+
+/** The small review holding one privacy-policy case and nothing else to answer. */
+function policyReview(dir) {
+  const made = review(dir, { sweep: false, findings: false, questions: false });
+  made.state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
+  // spawn has nothing to start here: marked done so the review opens at settle.
+  made.state.issued = ["spawn"];
+  return asPolicyCase(made);
+}
+
+// A privacy-policy case the agent sends on from settle is judged next against the policy the
+// reviewer pastes: it carries the instruction written for that phase, and is offered that
+// phase's answers, not the ones settle narrowed it to. What the policy does not let the agent
+// tell goes on to `ask`, and the reviewer answers it there.
+test("a privacy-policy case sent on from settle is judged against the pasted policy, then asked", () => {
+  const made = policyReview(tmp());
+  const settle = pass(made);
+  assert.equal(settle.phase.name, "settle");
+  assert.deepEqual(
+    settle.entries[0].answers.map((a) => a.label),
+    ["cleared", "ask"]
+  );
+  handBack(made.work, () => "ask");
+  take(made);
+
+  const policy = pass(made);
+  assert.equal(policy.phase.name, "privacy-policy");
+  assert.equal(policy.entries.length, 1);
+  const [entry] = policy.entries;
+  assert.equal(entry.index, settle.entries[0].index);
+  assert.equal(entry.item, "api.example.com");
+  assert.equal(
+    entry.instructions,
+    REGISTRY.sentOnInstruction("privacy-policy")
+  );
+  assert.deepEqual(
+    entry.answers.map((a) => a.label),
+    ["reported", "cleared", "ask"]
+  );
+  handBack(made.work, () => "ask");
+  take(made);
+
+  const ask = pass(made);
+  assert.equal(ask.phase.name, "ask");
+  assert.deepEqual(
+    ask.entries.map((e) => e.index),
+    [entry.index]
+  );
+});
+
+// What the agent settles against the policy is settled: `ask` puts nothing of it to anyone,
+// and a review whose cases settle cleared is never asked for the policy at all.
+test("a privacy-policy case settled against the policy never reaches ask", () => {
+  for (const [verdict, reported] of [
+    ["reported", true],
+    ["cleared", false],
+  ]) {
+    const { seen, settled } = driveLoop(policyReview(tmp()), (phase) =>
+      phase === "settle" ? "ask" : verdict
+    );
+    assert.deepEqual(seen, ["settle", "privacy-policy"], verdict);
+    assert.equal(
+      settled.findings.some((f) => f.ruleId === "privacy-policy"),
+      reported,
+      verdict
+    );
+    assert.deepEqual(settled.manual, [], verdict);
+  }
+  const { seen } = driveLoop(policyReview(tmp()), () => "cleared");
+  assert.deepEqual(seen, ["settle"]);
+});
+
+// A review a late exit ends asks the reviewer nothing, and a request for the policy is a
+// question to them: it halts before that phase as before `ask`.
+test("a late-exit finding halts the review before the privacy-policy phase", () => {
+  const made = asPolicyCase(lateReview(tmp()));
+  made.state.manual = made.state.manual.filter((m) => m.extended);
+  refed(made.state);
+  const { seen, closing } = driveLoop(made, (phase) =>
+    phase === "verify" ? "reported" : "ask"
+  );
+  assert.deepEqual(seen, ["spawn", "verify", "settle"]);
+  assert.equal(aborted(closing.settled), true);
+});
+
 /** The small review as a source review aborted by one error finding of each check in
  *  `ruleIds`, whose XPI could be reviewed on its own or not: the early-exit run's
  *  `xpiReviewable` in the record's permanent part. */

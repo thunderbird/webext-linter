@@ -396,6 +396,10 @@ export function entriesFor(items, phase, roots) {
     const at = item.file
       ? resolvedIn(root, item.file, item.ruleId, Boolean(roots))
       : null;
+    // In the phase a case was sent on to, it is judged by the instruction written for that
+    // phase, and offered that phase's answers: its premise was screened in `settle`.
+    const sentOn = Boolean(item.sentOnTo) && item.sentOnTo === phase.name;
+    const instructions = sentOn ? item.sentOnInstruction : item.instructions;
     return {
       ...base,
       ruleId: item.ruleId,
@@ -404,8 +408,8 @@ export function entriesFor(items, phase, roots) {
       ...(item.loc?.line ? { line: item.loc.line } : {}),
       ...(item.item ? { item: item.item } : {}),
       ...(item.hint ? { hint: item.hint } : {}),
-      ...(item.instructions ? { instructions: item.instructions } : {}),
-      answers: offeredBy(item, phase),
+      ...(instructions ? { instructions } : {}),
+      answers: offeredBy(sentOn ? { settleVerbs: null } : item, phase),
       [SLOT]: null,
     };
   });
@@ -418,7 +422,8 @@ export function entriesFor(items, phase, roots) {
  * phase: pick a `label`, and the `description` says when it applies.
  *
  * The SET is the item's where its check narrows it and the phase's otherwise - so a
- * finding, which no check narrows, offers exactly what its phase accepts. The WORDING is
+ * finding, which no check narrows, offers exactly what its phase accepts. The narrowing is
+ * `settle`'s: in the phase a case was sent on to, its caller passes none. The WORDING is
  * the phase's either way, because what `reported` means is a property of the question
  * being asked, not of the check that raised the case.
  *

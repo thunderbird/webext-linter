@@ -196,6 +196,11 @@ export function renderManualItems(refs, registry, mode) {
       // The phase a person is asked this in, where its check names one of its own. Carried
       // on the item so routing reads the case itself.
       askedIn: registry.askedIn(ref.ruleId),
+      // The phase a case the agent sends on with `ask` in `settle` goes to, and what it is
+      // judged by there, where its check names one. Carried on the item so routing and the
+      // entry handed out read the case itself.
+      sentOnTo: registry.sentOnTo(ref.ruleId),
+      sentOnInstruction: registry.sentOnInstruction(ref.ruleId),
       // The slot values behind {{name}} in the texts above. Kept so a REPORTED case
       // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
       // rather than from the already-rendered prose.

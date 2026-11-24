@@ -115,7 +115,13 @@ function runOf(state, record, settled, registry) {
       state,
       run
     )?.phase;
-    run.halted = !next || next.name === "ask" || next.answer === "end";
+    // A phase a case is sent on to halts it as `ask` does: it asks the reviewer for what the
+    // case is judged against, and a review a late exit ends asks nobody anything.
+    run.halted =
+      !next ||
+      next.name === "ask" ||
+      registry.sentOnPhases().has(next.name) ||
+      next.answer === "end";
   }
   return run;
 }
@@ -790,7 +796,7 @@ export function accept(record, work, registry) {
 
 /**
  * Record a verdict phase's answers in the review: each under its item's reference, and a case
- * moved on with `ask` marked as asked there instead.
+ * moved on with `ask` marked with the phase it is sent on to instead.
  * @param {object} state  The review, mutated.
  * @param {Map<string, *>} answers
  */
@@ -803,8 +809,11 @@ function recordVerdicts(state, answers) {
   );
   for (const [ref, value] of answers) {
     if (value === VERB.ask) {
-      // Not settled: moved. The case itself carries where it is asked now (phaseOf).
-      stored.get(ref).askedIn = "ask";
+      // Not settled: moved. The case itself carries where it is asked now (phaseOf). A case
+      // sent on for the first time goes to the phase its check names (`sent-on-to`), else
+      // to `ask`. One already sent on goes to `ask`, so no phase sends a case back to itself.
+      const item = stored.get(ref);
+      item.askedIn = (!item.askedIn && item.sentOnTo) || "ask";
     } else {
       // Written down as text, because the record is JSON. A verb spells itself, and a person's
       // answer is already their own words.

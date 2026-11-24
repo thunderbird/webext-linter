@@ -297,8 +297,12 @@ export function sortFindings(findings) {
  *   case, or null where the owning check narrows nothing and its phase's own verbs stand.
  * @property {string|null} [askedIn]  The loop phase a person is asked this in, where it is
  *   not the one its section opens in (src/report/phases.js phaseOf): its check's
- *   `asked-in`, stamped when the item is rendered, or "ask" once the agent sent the case
- *   on to a reviewer. Null otherwise.
+ *   `asked-in`, stamped when the item is rendered, or the phase the agent sent the case
+ *   on to with `ask` (its check's `sent-on-to` from `settle`, else "ask"). Null otherwise.
+ * @property {string|null} [sentOnTo]  The phase a case the agent answers with `ask` in
+ *   `settle` is sent on to, where its check names one (`sent-on-to`), else null.
+ * @property {string|null} [sentOnInstruction]  The wording an agent is handed for this case
+ *   in the phase it was sent on to (`sent-on-instruction`), else null.
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.
  * @property {Record<string, string|number>|null} [data]  The slot values the item's

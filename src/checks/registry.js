@@ -991,6 +991,44 @@ export class Registry {
   }
 
   /**
+   * The loop phase a case of this check is sent on to where the agent answers it with
+   * `ask` in `settle`, or null where it goes on to `ask`. A check names one when a person
+   * can hand the agent what the case is judged against, as the privacy policy on the
+   * listing: the agent judges it there, and only what that does not settle reaches `ask`.
+   * assertSentOnTo guarantees the phase is a verdict phase between `settle` and `ask`.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  sentOnTo(ruleId) {
+    const phase = this.checkEntry(ruleId)?.["sent-on-to"];
+    return typeof phase === "string" && phase !== "" ? phase : null;
+  }
+
+  /**
+   * The wording an agent is handed for a case of this check in the phase it was sent on
+   * to (`sent-on-instruction`), or null where the check names no such phase.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  sentOnInstruction(ruleId) {
+    const text = this.checkEntry(ruleId)?.["sent-on-instruction"];
+    return typeof text === "string" && text !== "" ? text : null;
+  }
+
+  /**
+   * The phases a check sends a case on to (`sent-on-to`): phases the agent judges in, as it
+   * does in `verify` and `settle`, and that come before `ask`.
+   * @returns {Set<string>}
+   */
+  sentOnPhases() {
+    return new Set(
+      this.allEntries()
+        .map((e) => e["sent-on-to"])
+        .filter((name) => typeof name === "string" && name !== "")
+    );
+  }
+
+  /**
    * The wording an AGENT is handed for a ref of this rule: the check's
    * `instructions-for-llm`, or its `instructions` where one text serves either reader.
    *
@@ -1726,6 +1764,10 @@ function assertProcessValues(registry, phase, at, conditionValues) {
 // Read by assertPhaseVerbSubsets.
 const SETTLE_PHASE = "settle";
 
+// The phase that puts the review's questions to a person, which a phase a case is sent on
+// to must come before. Read by assertSentOnTo.
+const ASK_PHASE = "ask";
+
 // The build check's block that ends with the waiting line, beside the turn-ending phases.
 const WAITING_DECISION = "decision";
 
@@ -2100,7 +2142,59 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   assertChoices(registry, at);
   assertEarlyExit(registry, at);
   assertAskedIn(registry, at);
+  assertSentOnTo(registry, at);
   assertLlmVerification(registry, at);
+}
+
+/**
+ * Assert every `sent-on-to`: it names a `verdict` phase that comes after `settle` and
+ * before `ask` and accepts `ask`, the check offers `ask` in `settle` (its `settle-verbs`, or
+ * the phase's own where it narrows nothing), and it authors `sent-on-instruction` exactly
+ * where it names such a phase. A phase before `settle` would be passed over once the case
+ * reached it, one after `ask` would leave a case the agent could not judge with nowhere to
+ * go, and one without `ask` would leave the agent no way to hand it to a person. A case
+ * sent on with no instruction of its own would be judged by the wording it was screened by.
+ * @param {Registry} registry @param {string} at
+ * @returns {void}
+ */
+export function assertSentOnTo(registry, at) {
+  const phases = registry.doc["llm-phases"]?.phases ?? [];
+  const position = (name) => phases.findIndex((p) => p.name === name);
+  for (const entry of registry.allEntries()) {
+    const name = entry["sent-on-to"];
+    const instruction = entry["sent-on-instruction"];
+    const where = `Registry ${at}: "${stem(entry.check)}"`;
+    if ((name === undefined) !== (instruction === undefined)) {
+      throw new Error(
+        `${where} authors one of \`sent-on-to\` and \`sent-on-instruction\` without the ` +
+          "other - a case sent on is judged by the instruction written for that phase"
+      );
+    }
+    if (name === undefined) {
+      continue;
+    }
+    const at2 = position(name);
+    const phase = phases[at2];
+    if (
+      phase?.answer !== "verdict" ||
+      !phase.verbs.includes(String(VERB.ask)) ||
+      at2 <= position(SETTLE_PHASE) ||
+      at2 >= position(ASK_PHASE)
+    ) {
+      throw new Error(
+        `${where} is sent on to \`${name}\`, which is not a verdict phase between ` +
+          `\`${SETTLE_PHASE}\` and \`${ASK_PHASE}\` that accepts \`ask\``
+      );
+    }
+    const offered =
+      entry["settle-verbs"] ?? phases[position(SETTLE_PHASE)].verbs;
+    if (!offered.includes(String(VERB.ask))) {
+      throw new Error(
+        `${where} is sent on to \`${name}\` but offers no \`ask\` in ` +
+          `\`${SETTLE_PHASE}\`, so no case of it is ever sent on`
+      );
+    }
+  }
 }
 
 /**
