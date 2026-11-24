@@ -335,10 +335,11 @@ export const SCA_PROMPT_COMMAND = "{{flags}}";
 
 /** The values the build check's SCA_BUILD_OVERRIDE question accepts back, by id, asked after
  *  an unsafe verdict only: nobody builds (`skip`), or the reviewer overrides the verdict and
- *  goes on to the build decision as if the build were safe (`continue`). It takes no words
- *  of the reviewer's own: it is only whether the verdict is overridden. Offered once each
+ *  goes on to the build decision as if the build were safe (`continue`, worded for a
+ *  vulnerable lock as `continue-vulnerable`, by its `when:`). It takes no words of the
+ *  reviewer's own: it is only whether the verdict is overridden. Each id is authored once
  *  (assertScaPrompt). */
-export const BUILD_OVERRIDE_VALUES = ["skip", "continue"];
+export const BUILD_OVERRIDE_VALUES = ["skip", "continue", "continue-vulnerable"];
 
 /** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
  *  reviewer's one decision about a build held safe, by the verdict or by their override. The

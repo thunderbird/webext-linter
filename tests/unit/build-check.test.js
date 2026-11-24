@@ -778,6 +778,51 @@ test("a vulnerable lock's decision offers the rescue, not the plain build", asyn
   cleanup(overridden);
 });
 
+// After an unsafe verdict, "Continue building" says that the decision that follows offers a
+// rescue, where the lock has a high or critical advisory, and says only that the build
+// question follows where it is clean. "Skip building" is the same for both.
+test("continuing an unsafe build names the rescue for a vulnerable lock", async () => {
+  const offered = async (vulns) => {
+    const work = workFolder(
+      { "package.json": packageFile(), "package-lock.json": npmLock() },
+      { vulns }
+    );
+    await analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: UNSAFE });
+    const answers = Object.fromEntries(
+      reviewEntries(work)[0].answers.map((a) => [a.label, a.description])
+    );
+    return { work, answers };
+  };
+  const clean = await offered(TOOL_CLEAN);
+  assert.deepEqual(Object.keys(clean.answers), [
+    "Skip building",
+    "Continue building",
+  ]);
+  assert.ok(!clean.answers["Continue building"].includes("rescue"));
+  cleanup(clean.work);
+  const vulnerable = await offered(TOOL_HIGH);
+  assert.deepEqual(Object.keys(vulnerable.answers), [
+    "Skip building",
+    "Continue building",
+  ]);
+  assert.equal(
+    vulnerable.answers["Skip building"],
+    clean.answers["Skip building"]
+  );
+  assert.match(
+    vulnerable.answers["Continue building"],
+    /offers to let the agent try to rescue it/
+  );
+  answer(vulnerable.work, { SCA_BUILD_OVERRIDE: "Continue building" });
+  const at = await stepOn(vulnerable.work);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.equal(
+    reviewEntries(vulnerable.work)[0].answers[0].label,
+    "Let the agent try to rescue and build"
+  );
+  cleanup(vulnerable.work);
+});
+
 // "Build it myself" is worded by the audit too: for a clean lock it says only that the
 // reviewer builds, for a vulnerable one that nothing is rescued and the vulnerabilities end
 // the review. Chosen on a vulnerable lock it holds the build safe, lets the agent build

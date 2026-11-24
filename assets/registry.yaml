@@ -2871,7 +2871,9 @@ llm-sca-review-prompt:
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
   # Whether the reviewer overrides an unsafe verdict, as the SCA_BUILD_OVERRIDE entry of ANSWERS
   # (src/build-check/steps.js overrideUnsafe). `skip` builds nothing, and build-unsafe reports
-  # each issue. `continue` goes on to the build decision as if the build were safe.
+  # each issue. `continue` goes on to the build decision as if the build were safe, worded for
+  # a lock with a high or critical advisory (`continue-vulnerable`) to say that decision offers
+  # a rescue.
   build-override:
     question: |-
       The agent judged the build unsafe, for the issues listed in build-issues.md (SCA_BUILD_SAFETY_ISSUES in the Build Review Details). Skip building, or override the verdict and continue as if the build were safe?
@@ -2882,6 +2884,11 @@ llm-sca-review-prompt:
       - value: continue
         label: Continue building
         description: The build issues the agent found are cleared, and the build is treated as safe. The build question follows.
+        when: NOT build-vulnerable
+      - value: continue-vulnerable
+        label: Continue building
+        description: The build issues the agent found are cleared, and the build is treated as safe. The lock has known high or critical vulnerabilities, so the build question that follows offers to let the agent try to rescue it.
+        when: build-vulnerable
   # The reviewer's one decision about a build held safe, by the verdict or by their override, as
   # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). Its answers
   # follow the audit at `analyze`: for a lock with a high or critical advisory

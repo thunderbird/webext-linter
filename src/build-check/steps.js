@@ -183,14 +183,15 @@ export function analyzeEntries() {
 }
 
 /**
- * The answers the build decision offers for this build: those whose `when:` holds over the
- * audit at `analyze` (`build-vulnerable`, a high or critical advisory in the lock), and those
- * with none. The one list both what is offered and what is accepted back are read from.
+ * The answers a build check question (the override, the decision) offers for this build:
+ * those whose `when:` holds over the audit at `analyze` (`build-vulnerable`, a high or
+ * critical advisory in the lock), and those with none. The one list both what is offered and
+ * what is accepted back are read from.
  * @param {BuildValueAsk} question
  * @param {object} record  Audited at `analyze`.
  * @returns {{value: string, label: string, description: string}[]}
  */
-function decisionValues(question, record) {
+function offeredValues(question, record) {
   const facts = new Set(
     countsVulnerable(record.current.vulnerabilities) ? ["build-vulnerable"] : []
   );
@@ -199,7 +200,7 @@ function decisionValues(question, record) {
 
 /**
  * The entry the reviewer makes their build decision in, about a build held safe, built as a
- * process value's entry is, with the answers this build is offered (decisionValues). It is
+ * process value's entry is, with the answers this build is offered (offeredValues). It is
  * answered with one of its labels or the reviewer's own words (decision).
  * @param {BuildValueAsk} question
  * @param {object} record  Audited at `analyze`.
@@ -207,20 +208,22 @@ function decisionValues(question, record) {
  */
 function decisionEntry(question, record) {
   return valueEntry(
-    { name: SCA_BUILD_DECISION, values: decisionValues(question, record) },
+    { name: SCA_BUILD_DECISION, values: offeredValues(question, record) },
     question.question
   );
 }
 
 /**
  * The entry the reviewer overrides an unsafe verdict in, or does not, built as a process
- * value's entry is. It is answered with one of its labels and nothing else (overrideUnsafe).
+ * value's entry is, with the answers this build is offered (offeredValues). It is answered
+ * with one of its labels and nothing else (overrideUnsafe).
  * @param {BuildValueAsk} question
+ * @param {object} record  Audited at `analyze`.
  * @returns {object}
  */
-function overrideEntry(question) {
+function overrideEntry(question, record) {
   return valueEntry(
-    { name: SCA_BUILD_OVERRIDE, values: question.values },
+    { name: SCA_BUILD_OVERRIDE, values: offeredValues(question, record) },
     question.question
   );
 }
@@ -469,7 +472,7 @@ async function analyze(work, record, context, prompt, registry) {
   }
   if (buildSafety === "unsafe") {
     return ask(movedOn(audited, { step: BUILD_CHECK_STEP.overrideUnsafe }), [
-      overrideEntry(prompt.buildOverride),
+      overrideEntry(prompt.buildOverride, audited),
     ]);
   }
   return ask(movedOn(audited, { step: BUILD_CHECK_STEP.decision }), [
@@ -533,7 +536,7 @@ function answerOf(work, entry, phase) {
  * @throws {HandbackRefused}
  */
 function overrideUnsafe(work, record, prompt) {
-  const entry = overrideEntry(prompt.buildOverride);
+  const entry = overrideEntry(prompt.buildOverride, record);
   const answer = answerOf(work, entry, {
     name: "override-unsafe",
     answer: "value",
@@ -551,7 +554,7 @@ function overrideUnsafe(work, record, prompt) {
 
 /**
  * The decision step, handed back: the reviewer's build decision read, one of the labels its
- * question offers this build (decisionValues), or their own words, which hold the build unsafe
+ * question offers this build (offeredValues), or their own words, which hold the build unsafe
  * for the reasons they give, held to the rule a reviewer's note is (checkedNote). The label of
  * an answer this build is not offered, a rescue of a clean lock or a plain build of a
  * vulnerable one, is refused rather than read as words of their own.
@@ -567,7 +570,7 @@ function decision(work, record, prompt) {
   if (answer === undefined) {
     return ask(record, [entry]);
   }
-  const offered = decisionValues(prompt.buildDecision, record);
+  const offered = offeredValues(prompt.buildDecision, record);
   const picked = pickedChoice(answer, offered);
   if (picked) {
     return decided(work, record, picked.value, null, prompt);

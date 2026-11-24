@@ -1581,8 +1581,12 @@ test("the build check prompts come from the registry and every part is required"
   // decision offers the rescue for a vulnerable lock and the plain build for a clean one, and
   // building it yourself for either, worded for each (their `when:`).
   assert.deepEqual(
-    prompt.buildOverride.values.map((v) => v.value),
-    ["skip", "continue"]
+    prompt.buildOverride.values.map((v) => [v.value, v.label, v.when !== null]),
+    [
+      ["skip", "Skip building", false],
+      ["continue", "Continue building", true],
+      ["continue-vulnerable", "Continue building", true],
+    ]
   );
   assert.deepEqual(
     prompt.buildDecision.values.map((v) => [v.value, v.label]),

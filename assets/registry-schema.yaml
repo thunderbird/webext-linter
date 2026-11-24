@@ -324,6 +324,11 @@ shapes:
       kind: text
       required: true
       why: what follows from it, so the reviewer can choose
+    when:
+      kind: text
+      why: >-
+        the condition the answer is offered under, read like a build check step's `when:`,
+        so its wording can follow the build (a rescue named only for a vulnerable lock)
 
   # One answer the build check's SCA_BUILD_DECISION question offers.
   build-decision-value-entry:
