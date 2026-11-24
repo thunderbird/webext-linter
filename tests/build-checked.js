@@ -100,23 +100,37 @@ export function writeTree(dir, files) {
   }
 }
 
+/** The build decision's answer that lets the agent build, whichever the entry offers: the
+ *  rescue for a vulnerable lock, the plain build for a clean one. */
+export const AGENT_BUILDS = ["Let the agent try to rescue and build", "Let the agent build"];
+
 /** Fill in the review file the way the agent does: each entry's answer by its index. The
  *  agent judges the build safe and the reviewer lets it build unless `answers` says
- *  otherwise. A build safety issue's file given relative is named by its absolute path in
- *  sca/, written on as it stands, the way the agent names the file it opened. */
+ *  otherwise, by the answer the decision offers for this build. A build safety issue's file
+ *  given relative is named by its absolute path in sca/, written on as it stands, the way the
+ *  agent names the file it opened. */
 export function answer(work, answers) {
   const file = workPaths(work).answers;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const issues = answers.SCA_BUILD_SAFETY_ISSUES;
   const given = {
     SCA_BUILD_SAFETY_ISSUES: [],
-    SCA_BUILD_DECISION: "Let the agent build",
     ...answers,
     ...(Array.isArray(issues)
       ? { SCA_BUILD_SAFETY_ISSUES: issues.map((i) => inSca(work, i)) }
       : {}),
   };
-  doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
+  const agentBuilds = (e) =>
+    (e.answers ?? [])
+      .map((a) => a.label)
+      .find((label) => AGENT_BUILDS.includes(label));
+  doc.entries = doc.entries.map((e) => ({
+    ...e,
+    answer:
+      e.index === "SCA_BUILD_DECISION" && !("SCA_BUILD_DECISION" in answers)
+        ? agentBuilds(e)
+        : given[e.index],
+  }));
   fs.writeFileSync(file, JSON.stringify(doc));
 }
 
@@ -190,7 +204,8 @@ export function buildRescued(work, root, reproduces = false) {
  * in sca/.
  * Each step is asserted to move as the build check moves it. A build's output reproduces the
  * submitted XPI where `match` is `match`, so the linter's comparison finds it the same, and is
- * an empty folder otherwise, which it finds no match.
+ * an empty folder otherwise, which it finds no match. A rescue counts only where it matches:
+ * a rescued build that does not is `rescue-mismatch`, and the original is done.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
  *   rescue?: ?(copyRoot: string) => void, match?: string}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
@@ -295,7 +310,12 @@ export async function realBuildCheck({
     });
     at = await step();
     assert.equal(at.next, "review", "the rescued copy came out clean");
-    assert.equal(at.record.current.buildResult, "built");
+    // The rescue counts only where its build reproduces the XPI: otherwise the source as
+    // submitted is reviewed.
+    assert.equal(
+      at.record.current.buildResult,
+      match === "match" ? "built" : "rescue-mismatch"
+    );
     return finished(at);
   }
   answer(work, { LLM_BUILD_OUTPUT: "The rescue failed" });

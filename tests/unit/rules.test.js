@@ -1047,6 +1047,12 @@ test("the build question and its answers name the same build", () => {
       "build-not-reproduced-confirm",
       AGENT,
     ],
+    [
+      "rescue did not reproduce the XPI",
+      { safe: true, result: "rescue-mismatch", match: null },
+      "build-not-reproduced-confirm",
+      AGENT,
+    ],
     ["agent built, match", { safe: true, result: "built", match: "match" }, null, null],
   ]) {
     const facts = checkFacts(selectionOf({}, { mode: { sca: true } }, build));

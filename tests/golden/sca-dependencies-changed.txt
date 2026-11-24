@@ -25,16 +25,6 @@ Suggested response: Please include an English localization. English serves as th
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - [XPI] manifest.json
 
-── Extended Manual Review ──
-
-Continue manual review for the following checks:
-
-1) Confirming the XPI could not be reproduced: It seems as if the XPI could not
-   be reproduced. Please confirm.
-Suggested verdict: error
-Suggested response: The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
- - [SCA] package.json
-
 ── Standard Code Review ──
 
 Continue manual review for the following checks:
@@ -215,5 +205,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 0 error(s), 0 hold, 0 warning(s), 1 info,
-1 extended code review item(s), 1 extended manual review item(s),
+1 extended code review item(s), 0 extended manual review item(s),
 7 standard code review item(s), 10 standard manual review item(s)

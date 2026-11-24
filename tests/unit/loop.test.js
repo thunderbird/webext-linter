@@ -879,6 +879,11 @@ test("the build result is worded by what came of the agent's attempt", () => {
     [{ result: null }, false, "not built: unsafe"],
     [{ result: null }, true, null],
     [{ result: "rescue-failed" }, true, "not built: rescue failed"],
+    [
+      { result: "rescue-mismatch" },
+      true,
+      "not reviewed as rescued: its build does not reproduce the XPI",
+    ],
     [undefined, undefined, null],
   ];
   for (const [build, safe, said] of cases) {
@@ -2456,10 +2461,17 @@ test("an unbuildable source skips the build question, a buildable rejected one d
     return made;
   };
   // A failed rescue leaves the vulnerable tree it could not fix, which alone is buildable:
-  // the failed rescue is what makes it unbuildable.
+  // the failed rescue is what makes it unbuildable. So does a rescue whose build did not
+  // reproduce the XPI: the vulnerable code may ship, and nobody is asked to build it.
   const failed = withFinding("vendor-vulnerable-dev");
   failed.record.build = { result: "rescue-failed" };
-  for (const made of [withFinding("sca-lock-file-missing"), failed]) {
+  const mismatched = withFinding("vendor-vulnerable-dev");
+  mismatched.record.build = { result: "rescue-mismatch" };
+  for (const made of [
+    withFinding("sca-lock-file-missing"),
+    failed,
+    mismatched,
+  ]) {
     const { seen, settled } = driveBuild(
       made,
       goesOn({ verify: () => "reported" })

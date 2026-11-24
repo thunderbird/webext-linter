@@ -736,6 +736,48 @@ test("the override of an unsafe build records what the reviewer answered", async
   cleanup(worded);
 });
 
+// The decision's answers follow the audit at analyze: a lock with a high or critical advisory
+// is offered the rescue in place of the plain build, after a safe verdict and after an
+// overridden unsafe one alike. The rescue lets the agent build and goes on to the rescue. The
+// plain build's label, which this build is not offered, is refused rather than read as the
+// reviewer's own words, with nothing changed.
+test("a vulnerable lock's decision offers the rescue, not the plain build", async () => {
+  const labels = (work) =>
+    reviewEntries(work)[0].answers.map((a) => a.label);
+  const RESCUE = ["Let the agent try to rescue and build", "Build it myself"];
+  const vulnerable = () =>
+    workFolder(
+      { "package.json": packageFile(), "package-lock.json": npmLock() },
+      { vulns: TOOL_HIGH }
+    );
+  const safe = vulnerable();
+  const asked = await analyzeStep(safe);
+  assert.equal(asked.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.deepEqual(labels(safe), RESCUE);
+  answer(safe, { SCA_BUILD_DECISION: "Let the agent build" });
+  await assert.rejects(
+    stepOn(safe),
+    refused(
+      'SCA_BUILD_DECISION answers "Let the agent build", which this build is not offered'
+    )
+  );
+  assert.equal(recordOf(safe).current.step, BUILD_CHECK_STEP.decision);
+  answer(safe, { SCA_BUILD_DECISION: "Let the agent try to rescue and build" });
+  const rescuing = await stepOn(safe);
+  assert.equal(rescuing.record.current.step, BUILD_CHECK_STEP.rescue);
+  assert.equal(rescuing.record.current.packageManagers, true);
+  assert.equal(rescuing.record.current.buildSafe, true);
+  cleanup(safe);
+
+  const overridden = vulnerable();
+  await analyzeStep(overridden, { SCA_BUILD_SAFETY_ISSUES: UNSAFE });
+  answer(overridden, { SCA_BUILD_OVERRIDE: "Continue building" });
+  const decided = await stepOn(overridden);
+  assert.equal(decided.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.deepEqual(labels(overridden), RESCUE);
+  cleanup(overridden);
+});
+
 // Each answer of the decision, after a safe verdict or an overridden unsafe one: whether the
 // build is held safe, whether the agent builds it, and the reviewer's own words as the reasons
 // for holding it unsafe. Only an answer that lets the agent build goes on to the audit, whose
@@ -1404,13 +1446,13 @@ async function rescued(vulns = TOOL_HIGH) {
   };
 }
 
-/** A rescue that failed: done, its roots back in sca/, the copy left in place and its build
- *  deleted, the original lock's counts recorded, and beside them the copy's, as its audit
- *  found them. */
-function rescueFailed(work, at, copyCounts) {
+/** A rescue that failed, or whose build did not reproduce the XPI (`result`): done, its roots
+ *  back in sca/, the copy left in place and its build deleted, the original lock's counts
+ *  recorded, and beside them the copy's, as its audit found them. */
+function rescueFailed(work, at, copyCounts, result = "rescue-failed") {
   assert.equal(at.next, "review");
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.done);
-  assert.equal(at.record.current.buildResult, "rescue-failed");
+  assert.equal(at.record.current.buildResult, result);
   assert.equal(at.record.current.buildOutput, null);
   assert.equal(at.record.current.buildMatch, null);
   assert.equal(at.record.current.roots.packageRoot, workPaths(work).sca);
@@ -1421,9 +1463,10 @@ function rescueFailed(work, at, copyCounts) {
   assert.ok(!fs.existsSync(workPaths(work).buildCopy), "the build is deleted");
 }
 
-// The copy's lock audits clean, and the output the agent named lies inside it: the folder is
-// done with the copy as the reviewed source, its build recorded, the original's counts kept,
-// and the copy's own counts beside them, a moderate advisory left in it included.
+// The copy's lock audits clean, the output the agent named lies inside it, and it reproduces
+// the XPI: the folder is done with the copy as the reviewed source, its build recorded, the
+// original's counts kept, and the copy's own counts beside them, a moderate advisory left in it
+// included.
 test("a clean copy with its build output is done with the copy's roots", async () => {
   const { work, copy, root } = await rescued({
     ...TOOL_HIGH,
@@ -1435,7 +1478,7 @@ test("a clean copy with its build output is done with the copy's roots", async (
     "package.json": packageFile("0.4.1"),
     "package-lock.json": npmLock("0.4.1"),
   });
-  const output = buildRescued(work, root);
+  const output = buildRescued(work, root, true);
   const at = await handOutput(work, output);
   assert.equal(at.next, "review");
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.done);
@@ -1458,9 +1501,11 @@ test("a clean copy with its build output is done with the copy's roots", async (
   cleanup(work);
 });
 
-// A rescue's output is compared with the submitted XPI by the linter, as a build's is, and
-// the comparison recorded beside it.
-test("a rescue's output is recorded with the linter's comparison", async () => {
+// A rescue counts only where its build reproduces the XPI, by the linter's own comparison:
+// only then did none of the vulnerable code ship. A clean copy whose build does not
+// reproduce it is `rescue-mismatch`: the source as submitted is reviewed, its build deleted,
+// and its vulnerability checks end the review.
+test("a rescue counts only where its build reproduces the XPI", async () => {
   for (const reproduces of [true, false]) {
     const { work, root } = await rescued({
       ...TOOL_HIGH,
@@ -1471,12 +1516,14 @@ test("a rescue's output is recorded with the linter's comparison", async () => {
       "package-lock.json": npmLock("0.4.1"),
     });
     const at = await handOutput(work, buildRescued(work, root, reproduces));
-    assert.equal(at.record.current.buildResult, "built");
-    assert.equal(
-      at.record.current.buildMatch,
-      reproduces ? "match" : "no match"
-    );
-    assert.deepEqual(recordOf(work), at.record);
+    if (reproduces) {
+      assert.equal(at.record.current.buildResult, "built");
+      assert.equal(at.record.current.buildMatch, "match");
+      assert.equal(at.record.current.roots.packageRoot, root);
+      assert.deepEqual(recordOf(work), at.record);
+    } else {
+      rescueFailed(work, at, NONE, "rescue-mismatch");
+    }
     cleanup(work);
   }
 });
@@ -1742,7 +1789,7 @@ test("a clean rescue handed back again keeps its copy", async () => {
     "package.json": packageFile(null),
     "package-lock.json": npmLock(null),
   });
-  await handOutput(work, buildRescued(work, root));
+  await handOutput(work, buildRescued(work, root, true));
   const again = await stepOn(work);
   assert.equal(again.next, "review");
   assert.equal(again.record.current.roots.packageRoot, root);
@@ -1751,27 +1798,33 @@ test("a clean rescue handed back again keeps its copy", async () => {
   cleanup(work);
 });
 
-// A failed rescue cut short after the folder was marked done leaves its build behind. The
-// next hand-back finishes removing it, keeps the copy, and hands the review out.
+// A rescue that failed or did not reproduce the XPI, cut short after the folder was marked
+// done, leaves its build behind. The next hand-back finishes removing it, keeps the copy, and
+// hands the review out.
 test("a failed rescue cut short keeps its copy and removes its build", async () => {
-  const { work, copy, root } = await rescued();
-  buildRescued(work, root);
-  forge(work, (current) => ({
-    ...current,
-    step: BUILD_CHECK_STEP.done,
-    roots: {
-      source: workPaths(work).sca,
-      used: workPaths(work).sca,
-      packageRoot: workPaths(work).sca,
-    },
-    buildResult: "rescue-failed",
-  }));
-  assert.ok(fs.existsSync(copy));
-  const at = await stepOn(work);
-  assert.equal(at.next, "review");
-  assert.ok(fs.existsSync(copy), "the copy stays");
-  assert.ok(!fs.existsSync(workPaths(work).buildCopy), "the build is removed");
-  cleanup(work);
+  for (const result of ["rescue-failed", "rescue-mismatch"]) {
+    const { work, copy, root } = await rescued();
+    buildRescued(work, root);
+    forge(work, (current) => ({
+      ...current,
+      step: BUILD_CHECK_STEP.done,
+      roots: {
+        source: workPaths(work).sca,
+        used: workPaths(work).sca,
+        packageRoot: workPaths(work).sca,
+      },
+      buildResult: result,
+    }));
+    assert.ok(fs.existsSync(copy));
+    const at = await stepOn(work);
+    assert.equal(at.next, "review", result);
+    assert.ok(fs.existsSync(copy), `${result}: the copy stays`);
+    assert.ok(
+      !fs.existsSync(workPaths(work).buildCopy),
+      `${result}: the build is removed`
+    );
+    cleanup(work);
+  }
 });
 
 // The agent can write any file, records included, so no record decides what is deleted: the
@@ -1990,6 +2043,16 @@ test("a build record the linter would not write cannot be carried on", async (t)
         ...r,
         step: BUILD_CHECK_STEP.done,
         buildResult: "failed",
+        buildOutput: r.roots.packageRoot,
+      }),
+      "holds buildOutput without a build that produced it",
+    ],
+    [
+      "an output beside a rescue that did not reproduce the XPI",
+      (r) => ({
+        ...r,
+        step: BUILD_CHECK_STEP.done,
+        buildResult: "rescue-mismatch",
         buildOutput: r.roots.packageRoot,
       }),
       "holds buildOutput without a build that produced it",

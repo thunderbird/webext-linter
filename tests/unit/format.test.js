@@ -1553,7 +1553,7 @@ test("the build check prompts come from the registry and every part is required"
   badMarker.doc["llm-sca-review-prompt"].analyze[0].when = "experiment";
   assert.throws(
     () => checkScaPrompt(badMarker),
-    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: find-experiment, build-overridden\)/
+    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: find-experiment, build-overridden, build-vulnerable\)/
   );
 
   // And the shared step rule: every prompt is numbered by the renderer.
@@ -1576,22 +1576,41 @@ test("the build check prompts come from the registry and every part is required"
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].analyze[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
-  // The override question and the build decision each offer their two answers once each,
-  // under labels of their own: every answer is read as one of them, the decision's own
-  // words of the reviewer apart.
+  // The override question and the build decision each offer their answers once each, under
+  // labels of their own: every answer is read as one of them, the decision's own words of the
+  // reviewer apart. The decision offers the rescue for a vulnerable lock and the plain build
+  // for a clean one (their `when:`), and building it yourself for either.
   assert.deepEqual(
     prompt.buildOverride.values.map((v) => v.value),
     ["skip", "continue"]
   );
   assert.deepEqual(
-    prompt.buildDecision.values.map((v) => v.value),
-    ["allow", "manual"]
+    prompt.buildDecision.values.map((v) => [v.value, v.when !== null]),
+    [
+      ["rescue", true],
+      ["allow", true],
+      ["manual", false],
+    ]
   );
   const asked = (key, mutate) => {
     const r = loadRegistry();
     mutate(r.doc["llm-sca-review-prompt"][key]);
     return r;
   };
+  assert.throws(
+    () =>
+      checkScaPrompt(
+        asked("build-decision", (d) => (d.values[0].when = "vulnerable"))
+      ),
+    /value `rescue` is conditioned on `vulnerable`, which this prompt does not know/
+  );
+  assert.throws(
+    () =>
+      checkScaPrompt(
+        asked("build-decision", (d) => (d.values[2].when = "build-vulnerable"))
+      ),
+    /offers every value under a `when`/
+  );
   for (const key of ["build-override", "build-decision"]) {
     assert.throws(
       () => checkScaPrompt(asked(key, (d) => delete d.question)),
@@ -1615,7 +1634,7 @@ test("the build check prompts come from the registry and every part is required"
   assert.throws(
     () =>
       checkScaPrompt(
-        asked("build-decision", (d) => (d.values[1].value = "allow"))
+        asked("build-decision", (d) => (d.values[2].value = "allow"))
       ),
     /offers `allow` other than once/
   );

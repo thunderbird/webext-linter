@@ -343,6 +343,12 @@ shapes:
       kind: text
       required: true
       why: what follows from it, so the reviewer can choose
+    when:
+      kind: text
+      why: >-
+        the condition the answer is offered under, read like a build check step's `when:`,
+        so an answer that means nothing for this build (a rescue of a clean lock) is not
+        offered
 
   # One pass of the review loop: what it asks, what it accepts back, and its steps.
   loop-phase-entry:

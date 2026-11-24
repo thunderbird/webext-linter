@@ -111,8 +111,9 @@ const FIXTURE_CLEAN = {
   "wick-trim@1.0.1": [],
 };
 
-// A source rescued clean: its review reads the rescued copy, named as such, beside the same
-// root in the source archive, and the root in the build copy the agent built in.
+// A source rescued clean, its build reproducing the XPI: its review reads the rescued copy,
+// named as such, beside the same root in the source archive, and the root in the build copy
+// the agent built in.
 test("a rescued review names both roots and the build root", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const own = { name: "lantern-sorter", version: "1.0.0" };
@@ -141,6 +142,7 @@ test("a rescued review names both roots and the build root", async () => {
         JSON.stringify({ ...own, lockfileVersion: 3, packages: { "": own } })
       );
     },
+    match: "match",
   });
   const { sca, rescued, buildCopy } = workPaths(work);
   // The tree the review reads is the build check's own decision, part of its results.

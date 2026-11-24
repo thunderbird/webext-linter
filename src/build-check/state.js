@@ -61,9 +61,10 @@ import {
  * - `rescue`: the package root's lock is vulnerable, and the agent makes the lock of the
  *   rescued copy in `rescued/` clean, builds a copy of it in `build/`, and names what the
  *   build produced, or that the rescue failed. The next hand-back audits the copy, checks
- *   what it named and compares it with the submitted XPI;
- * - `done`: the review may start here. A folder whose rescue failed is `done` too, its
- *   roots back in `sca/`. A review start that failed leaves the folder here, and the next
+ *   what it named and compares it with the submitted XPI, and the rescue counts only where
+ *   all three hold;
+ * - `done`: the review may start here. A folder whose rescue failed or did not reproduce the
+ *   XPI is `done` too, its roots back in `sca/`. A review start that failed leaves the folder here, and the next
  *   hand-back starts it again.
  */
 export const BUILD_CHECK_STEP = Object.freeze({
@@ -77,14 +78,17 @@ export const BUILD_CHECK_STEP = Object.freeze({
 
 /**
  * What came of the agent's build, as a done record holds it: `built` (the record names the
- * output), `failed` (the clean original did not build), or `rescue-failed` (the rescued copy
- * did not come out clean and built, and was deleted). A folder where the agent built nothing
- * holds none.
+ * output), `failed` (the clean original did not build), `rescue-failed` (the rescued copy did
+ * not come out clean and built), or `rescue-mismatch` (it came out clean and built, but its
+ * build does not reproduce the submitted XPI, so the vulnerable code may ship). After either
+ * rescue result the build copy is deleted and the source as submitted is reviewed. A folder
+ * where the agent built nothing holds none.
  */
 export const BUILD_RESULT = Object.freeze({
   built: "built",
   failed: "failed",
   rescueFailed: "rescue-failed",
+  rescueMismatch: "rescue-mismatch",
 });
 
 /** The severities a record counts a lock's vulnerable packages by. */

@@ -843,8 +843,8 @@ export class Registry {
    * `buildOverride` is the question the override-unsafe prompt puts after an unsafe verdict:
    * its text and the two answers it offers, each by its id (BUILD_OVERRIDE_VALUES).
    * `buildDecision` is the reviewer's one decision about a build held safe, which the decision
-   * prompt puts: its text and the two answers it offers, each by its id
-   * (BUILD_DECISION_VALUES). Each step's {{maxNote}} is filled with the length a
+   * prompt puts: its text and the answers it offers, each by its id (BUILD_DECISION_VALUES)
+   * and with its `when:` parsed, or null for one offered for every build. Each step's {{maxNote}} is filled with the length a
    * reviewer's own words are held to, and {{maxHint}} with the length of an issue's hint. The
    * analyze prompt's {{issueShape}} is a block filled where it is printed, with the shape of
    * one issue in SCA_SOURCE, the one the hand-back holds them to (src/report/format.js
@@ -861,10 +861,11 @@ export class Registry {
     const p = this.doc["llm-sca-review-prompt"];
     const asked = ({ question, values }) => ({
       question,
-      values: values.map(({ value, label, description }) => ({
+      values: values.map(({ value, label, description, when }) => ({
         value,
         label,
         description,
+        when: when === undefined ? null : parseCondition(when),
       })),
     });
     const output = ({ question, failed }) => ({
@@ -1965,6 +1966,24 @@ export function assertScaPrompt(registry, at) {
     if (new Set(values.map((v) => v.label)).size !== values.length) {
       throw new Error(
         `${where} \`${key}\` offers one label twice - an answer would read as either`
+      );
+    }
+    // An answer may be offered under a `when:` over the facts these prompts know, as a
+    // step may, and at least one carries none, so the question always has one to offer.
+    for (const v of values) {
+      if (v.when !== undefined) {
+        assertCondition(
+          v.when,
+          `${where} \`${key}\` value \`${v.value}\``,
+          SCA_PROMPT_FACTS,
+          new Map()
+        );
+      }
+    }
+    if (values.every((v) => v.when !== undefined)) {
+      throw new Error(
+        `${where} \`${key}\` offers every value under a \`when\` - at least one must be ` +
+          "offered for every build, or the question could ask with nothing to answer"
       );
     }
   }

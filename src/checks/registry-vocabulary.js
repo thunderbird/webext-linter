@@ -168,13 +168,15 @@ export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
 /** The build results that report the agent's attempt: it built the add-on in the
  *  build check (`agent-built`), its build failed (`agent-build-failed`), its rescue failed so
- *  nothing was built (`rescue-failed`), or the build was judged unsafe so nothing was built
- *  (`build-unsafe`). The details blocks word exactly these in their LLM_BUILD_RESULT row
- *  (`build-results`, assets/registry.yaml). */
+ *  nothing was built (`rescue-failed`), its rescued build did not reproduce the XPI so the
+ *  source is reviewed as submitted (`rescue-mismatch`), or the build was judged unsafe so
+ *  nothing was built (`build-unsafe`). The details blocks word exactly these in their
+ *  LLM_BUILD_RESULT row (`build-results`, assets/registry.yaml). */
 export const WORDED_BUILD_FACTS = [
   "agent-built",
   "agent-build-failed",
   "rescue-failed",
+  "rescue-mismatch",
   "build-unsafe",
 ];
 
@@ -195,8 +197,8 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `build-safe`: that decision held the build safe, the agent's verdict as the reviewer
  *    kept or overrode it;
  *  - `build-attempted`: the build check recorded a result of the agent's build (`built`,
- *    `failed` or `rescue-failed`), exactly where the review loop's build result is not
- *    `self-build`;
+ *    `failed`, `rescue-failed` or `rescue-mismatch`), exactly where the review loop's build
+ *    result is not `self-build`;
  *  - `build-reproduced`: the agent built it, and the linter's comparison of what it built
  *    with the submitted XPI matched (src/build-check/steps.js xpiMatch).
  *
@@ -231,8 +233,8 @@ export const CHECK_FACTS = [
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
  *  - `unbuildable`: no build can be made from this source by the review's own rules - a
- *    finding of a check marked `review-unbuildable` stands, or the rescue failed - so the
- *    build phases ask nothing;
+ *    finding of a check marked `review-unbuildable` stands, or the rescue failed or did not
+ *    reproduce the XPI - so the build phases ask nothing;
  *  - the build result, exactly one of BUILD_RESULT_FACTS.
  *
  *  `first`, `spawned`, `decided`, `unbuildable`, `build-checked` and the build result are
@@ -301,10 +303,15 @@ export const DOWNGRADE_RESTART = "xpi";
 
 /** The facts the build check prompts' `when:` conditions can name: whether `unpack` asks its
  *  reader for the Experiment folder - the built add-on declares Experiments
- *  (src/build-check/steps.js asksExperiments) - and whether the reviewer overrode an unsafe
+ *  (src/build-check/steps.js asksExperiments) - whether the reviewer overrode an unsafe
  *  verdict at `override-unsafe`, so `decision` does not show the Build Review Details a
- *  second time. */
-export const SCA_PROMPT_FACTS = ["find-experiment", "build-overridden"];
+ *  second time, and whether the audit at `analyze` found a high or critical advisory in the
+ *  lock (`build-vulnerable`), which decides the answers `decision` offers. */
+export const SCA_PROMPT_FACTS = [
+  "find-experiment",
+  "build-overridden",
+  "build-vulnerable",
+];
 
 /** The prompts of modes unpack and build-check, one step list each, named for the step
  *  that prints it (src/build-check/state.js BUILD_CHECK_STEP): `unpack` where the agent
@@ -335,10 +342,11 @@ export const BUILD_OVERRIDE_VALUES = ["skip", "continue"];
 
 /** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
  *  reviewer's one decision about a build held safe, by the verdict or by their override. The
- *  agent builds (`allow`) or the reviewer does (`manual`). Offered once each
- *  (assertScaPrompt). An answer in the reviewer's own words is none of them: it holds the
- *  build unsafe, for the reasons it gives. */
-export const BUILD_DECISION_VALUES = ["allow", "manual"];
+ *  agent builds a clean lock (`allow`), or tries to rescue a vulnerable one and build it
+ *  (`rescue`), each offered only where the audit says so (its `when:`), or the reviewer
+ *  builds it (`manual`). Offered once each (assertScaPrompt). An answer in the reviewer's own
+ *  words is none of them: it holds the build unsafe, for the reasons it gives. */
+export const BUILD_DECISION_VALUES = ["allow", "rescue", "manual"];
 
 /** The verdicts the build check records of the build the agent reported, by id: read off the
  *  SCA_BUILD_SAFETY_ISSUES list the agent hands back, `unsafe` where it holds an entry

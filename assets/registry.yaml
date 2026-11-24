@@ -2883,20 +2883,29 @@ llm-sca-review-prompt:
         label: Continue building
         description: The build issues the agent found are cleared, and the build is treated as safe. The build question follows.
   # The reviewer's one decision about a build held safe, by the verdict or by their override, as
-  # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). An answer is the
-  # label of one of its two values, or the reviewer's own words: the build is unsafe, for the
-  # reasons they give, and build-unsafe reports it. Only `allow` lets the agent build. `manual`
-  # leaves the build to the reviewer, whom the `built` question asks of their own build.
+  # the SCA_BUILD_DECISION entry of ANSWERS (src/build-check/steps.js decision). Its answers
+  # follow the audit at `analyze`: for a lock with a high or critical advisory
+  # (`build-vulnerable`) the agent tries to rescue it (`rescue`), for any other it builds the
+  # lock as submitted (`allow`), and either way the reviewer may build it themselves
+  # (`manual`). An answer is the label of one of the answers offered, or the reviewer's own
+  # words: the build is unsafe, for the reasons they give, and build-unsafe reports it. `allow`
+  # and `rescue` let the agent build, and `manual` leaves the build to the reviewer, whom the
+  # `built` question asks of their own build.
   build-decision:
     question: |-
       Let the agent build the add-on, including its package-manager commands, or build it yourself? To hold the build unsafe instead, answer in your own words why building it is unsafe.
     values:
+      - value: rescue
+        label: Let the agent try to rescue and build
+        description: The lock has dependencies with known high or critical vulnerabilities. The agent removes dependencies the release build does not use, and tries to update any remaining vulnerable packages to fixed releases. If any of these vulnerabilities remain, the rescue has failed and the build is aborted. Otherwise the agent builds the add-on, and the rescue counts only where that build reproduces the submitted XPI. A rescue that failed or does not reproduce the XPI ends the review with the vulnerabilities.
+        when: build-vulnerable
       - value: allow
         label: Let the agent build
-        description: The build is safe. The agent runs the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
+        description: The agent runs the package-manager commands and the add-on's own build commands, which run the submission's code, on the lock as submitted.
+        when: NOT build-vulnerable
       - value: manual
         label: Build it myself
-        description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
+        description: The agent runs none of its commands. You answer the build question from your own build. Where the lock has known high or critical vulnerabilities, nothing is rescued and they end the review.
   # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
   # LLM_BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.
@@ -2922,11 +2931,13 @@ llm-sca-review-prompt:
   # lock, and builds only a lock with no high or critical advisory left, in a fresh copy of the
   # whole rescued copy in build/. The answer is what the build produced inside build/
   # (rescue-output), or that the rescue failed. The linter audits the copy again, checks that
-  # output and compares it with the submitted XPI, and a rescue failing the audit or the output
-  # check has build/ deleted, its copy left in place.
+  # output and compares it with the submitted XPI. The rescue counts only where all three hold:
+  # a rescue failing the audit or the output check (`rescue-failed`), or whose build does not
+  # reproduce the XPI (`rescue-mismatch`), has build/ deleted, its copy left in place, and the
+  # source as submitted is reviewed.
   rescue:
     - text: |-
-        The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Change the dependencies only there, never in the source archive itself, and run every command in your own sandbox. Never install or build anything in RESCUE_ROOT: every build runs in LLM_BUILD_ROOT, given above, which is RESCUE_ROOT in a fresh copy of the whole rescued copy. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces.
+        The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Change the dependencies only there, never in the source archive itself, and run every command in your own sandbox. Never install or build anything in RESCUE_ROOT: every build runs in LLM_BUILD_ROOT, given above, which is RESCUE_ROOT in a fresh copy of the whole rescued copy. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces. The rescue counts only where its build reproduces the submitted XPI, which the linter checks itself.
 
         Make the copy's lock clean, then build it, in the loop the next three steps describe.
     - text: |-
@@ -2988,7 +2999,8 @@ llm-sca-review-prompt:
 #                flags given, `aborted`, `sca`, `build-guarded`, `build-checked`, `sweep-<artifact>`,
 #                `first`, `spawned`, `decided`, `closing`, `unbuildable`, and
 #                the build result: `agent-built`, `agent-build-failed`, `rescue-failed`,
-#                `build-unsafe` or `self-build` - and over the process values recorded so
+#                `rescue-mismatch`, `build-unsafe` or `self-build` - and over the process
+#                values recorded so
 #                far, read with value(phase, id) (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as the last numbered step of every phase
 #                but `close`, which nothing is handed back after. Not
@@ -3076,13 +3088,15 @@ llm-phases:
       ask: the {{count}} manual review questions
       downgrade: the question whether the review should be restarted as a pure XPI review
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
-  # add-on, its build failed, its rescue failed so nothing was built, or the build was judged
-  # unsafe so nothing was built. The row is shown only for these four results. A failed
-  # rescue leaves nothing to build (`unbuildable`), so no `built` step names it.
+  # add-on, its build failed, its rescue failed so nothing was built, its rescued build did not
+  # reproduce the XPI so the source is reviewed as submitted, or the build was judged unsafe
+  # so nothing was built. The row is shown only for these five results. A rescue that failed
+  # or did not reproduce leaves nothing to build (`unbuildable`), so no `built` step names it.
   build-results:
     agent-built: build succeeded
     agent-build-failed: "build failed: see build.md"
     rescue-failed: "not built: rescue failed"
+    rescue-mismatch: "not reviewed as rescued: its build does not reproduce the XPI"
     build-unsafe: "not built: unsafe"
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same

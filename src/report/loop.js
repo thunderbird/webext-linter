@@ -104,6 +104,7 @@ function runOf(state, record, settled, registry) {
     values: state.values ?? {},
     unbuildable:
       buildResult === "rescue-failed" ||
+      buildResult === "rescue-mismatch" ||
       settled.exits.aborting.some((id) => registry.unbuildable(id)),
     [buildResult]: true,
   };
@@ -132,7 +133,8 @@ function walkOrder(settled) {
 
 /**
  * What came of the build, as the one BUILD_RESULT_FACTS name that holds: the agent's build
- * as the build check recorded it (`agent-built`, `agent-build-failed`, `rescue-failed`), else
+ * as the build check recorded it (`agent-built`, `agent-build-failed`, `rescue-failed`,
+ * `rescue-mismatch`), else
  * a build the reviewer held unsafe in the build check (`build-unsafe`), which nothing builds,
  * else a build the reviewer makes (`self-build`): the agent was not let build, or nothing was
  * checked. Read off the build results the record's permanent part holds (`build`).
@@ -149,6 +151,9 @@ export function buildResultFact(record) {
   }
   if (result === BUILD_RESULT.rescueFailed) {
     return "rescue-failed";
+  }
+  if (result === BUILD_RESULT.rescueMismatch) {
+    return "rescue-mismatch";
   }
   return record.build?.safe === false ? "build-unsafe" : "self-build";
 }

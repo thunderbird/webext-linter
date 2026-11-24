@@ -259,7 +259,10 @@ may hold the real source beside the copy.
     After an unsafe verdict they first skip building, or override the verdict and continue
     as if the build were safe. A build held safe is then put to them as the build decision:
     they let the agent build or build it themselves, or hold it unsafe for reasons of their
-    own.
+    own. Where the lock has a high or critical advisory, the agent's answer is to try to
+    rescue the build: in a copy, it removes the dependencies the release build does not use
+    and updates the rest to fixed releases. The rescue counts only where its build
+    reproduces the shipped XPI, since only then did none of the vulnerable code ship.
   - Where the agent built it, the linter compares its build with the shipped XPI itself. A
     match answers the build question, and nobody is asked.
   - **`build-reproduces-xpi`**, where the reviewer held the build safe and built it
@@ -277,8 +280,9 @@ may hold the real source beside the copy.
     agent hands its issues back as a list, which the linter writes to `build-issues.md` and
     links in the Build Review Details, and reads the verdict off: none is a safe build.
 
-  Any of them reported aborts the review late. A source whose build check gave its rescue up
-  ends the review through its vulnerability findings, and is not built. A source with no
+  Any of them reported aborts the review late. A source whose build check gave its rescue up,
+  or whose rescued build did not reproduce the XPI, is reviewed as submitted: it ends the
+  review through its vulnerability findings, and is not built. A source with no
   usable package.json or no single readable lock skips the build question. The review
   itself builds nothing.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
@@ -380,8 +384,8 @@ developer is told everything in one round. A finding that still stands ends the 
 before anyone is asked a question or to install the add-on, and a review without
 `--llm-review` is aborted the same way at its end. The package.json and lock checks also
 say that no build can be made from the source (`review-unbuildable: true`), so a review
-holding one of their findings, or one whose build check gave its rescue up, asks nobody to
-build it.
+holding one of their findings, or one whose build check gave its rescue up or whose rescue
+did not reproduce the XPI, asks nobody to build it.
 
 **Early** (`review-early-exit:`) is for the two cases where the rest of the review is no
 use: `experiment-not-allowed` (*Experiment APIs not accepted*), a submission refused

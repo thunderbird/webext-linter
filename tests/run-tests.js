@@ -203,6 +203,9 @@ async function buildCheckedFixture(dir, buildCheck, cache) {
       ? (copyRoot) =>
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
       : null,
+    // A rescued fixture is one whose rescue came out clean, which counts only where its
+    // build reproduces the XPI.
+    ...(buildCheck.rescued ? { match: "match" } : {}),
   });
   // The folders as the record holds them, which the hand-back starts the review with (src/cli.js
   // buildCheckCase): the rescued copy where a rescue came out clean, else `sca/`.

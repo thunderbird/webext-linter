@@ -70,6 +70,7 @@ import {
   vulnerabilityCounts,
 } from "./audit.js";
 import { checkSelected } from "../checks/registry.js";
+import { holds } from "../checks/condition.js";
 import { loadAddon } from "../addon/load.js";
 import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { splitList } from "../lib/util.js";
@@ -182,15 +183,31 @@ export function analyzeEntries() {
 }
 
 /**
- * The entry the reviewer makes their build decision in, about a build held safe, built as a
- * process value's entry is. It is answered with one of its labels or the reviewer's own words
- * (decision).
+ * The answers the build decision offers for this build: those whose `when:` holds over the
+ * audit at `analyze` (`build-vulnerable`, a high or critical advisory in the lock), and those
+ * with none. The one list both what is offered and what is accepted back are read from.
  * @param {BuildValueAsk} question
+ * @param {object} record  Audited at `analyze`.
+ * @returns {{value: string, label: string, description: string}[]}
+ */
+function decisionValues(question, record) {
+  const facts = new Set(
+    countsVulnerable(record.current.vulnerabilities) ? ["build-vulnerable"] : []
+  );
+  return question.values.filter((v) => v.when === null || holds(v.when, facts));
+}
+
+/**
+ * The entry the reviewer makes their build decision in, about a build held safe, built as a
+ * process value's entry is, with the answers this build is offered (decisionValues). It is
+ * answered with one of its labels or the reviewer's own words (decision).
+ * @param {BuildValueAsk} question
+ * @param {object} record  Audited at `analyze`.
  * @returns {object}
  */
-function decisionEntry(question) {
+function decisionEntry(question, record) {
   return valueEntry(
-    { name: SCA_BUILD_DECISION, values: question.values },
+    { name: SCA_BUILD_DECISION, values: decisionValues(question, record) },
     question.question
   );
 }
@@ -456,7 +473,7 @@ async function analyze(work, record, context, prompt, registry) {
     ]);
   }
   return ask(movedOn(audited, { step: BUILD_CHECK_STEP.decision }), [
-    decisionEntry(prompt.buildDecision),
+    decisionEntry(prompt.buildDecision, audited),
   ]);
 }
 
@@ -528,15 +545,16 @@ function overrideUnsafe(work, record, prompt) {
   if (picked.value === "skip") {
     return decided(work, record, "skip", null, prompt);
   }
-  return ask(movedOn(record, { step: BUILD_CHECK_STEP.decision }), [
-    decisionEntry(prompt.buildDecision),
-  ]);
+  const moved = movedOn(record, { step: BUILD_CHECK_STEP.decision });
+  return ask(moved, [decisionEntry(prompt.buildDecision, moved)]);
 }
 
 /**
  * The decision step, handed back: the reviewer's build decision read, one of the labels its
- * question offers, or their own words, which hold the build unsafe for the reasons they give,
- * held to the rule a reviewer's note is (checkedNote).
+ * question offers this build (decisionValues), or their own words, which hold the build unsafe
+ * for the reasons they give, held to the rule a reviewer's note is (checkedNote). The label of
+ * an answer this build is not offered, a rescue of a clean lock or a plain build of a
+ * vulnerable one, is refused rather than read as words of their own.
  * @param {string} work
  * @param {object} record
  * @param {ScaPrompt} prompt
@@ -544,15 +562,26 @@ function overrideUnsafe(work, record, prompt) {
  * @throws {HandbackRefused}
  */
 function decision(work, record, prompt) {
-  const entry = decisionEntry(prompt.buildDecision);
+  const entry = decisionEntry(prompt.buildDecision, record);
   const answer = answerOf(work, entry, { name: "decision", answer: "words" });
   if (answer === undefined) {
     return ask(record, [entry]);
   }
-  const offered = prompt.buildDecision.values;
+  const offered = decisionValues(prompt.buildDecision, record);
   const picked = pickedChoice(answer, offered);
   if (picked) {
     return decided(work, record, picked.value, null, prompt);
+  }
+  const withheld = pickedChoice(
+    answer,
+    prompt.buildDecision.values.filter((v) => !offered.includes(v))
+  );
+  if (withheld) {
+    throw new HandbackRefused(
+      `${SCA_BUILD_DECISION} answers "${withheld.label}", which this build is not offered ` +
+        `(expected one of: ${offered.map((v) => v.label).join(", ")}, or words of the ` +
+        "reviewer's own)"
+    );
   }
   const { note, problem } = checkedNote(answer);
   if (problem) {
@@ -563,7 +592,8 @@ function decision(work, record, prompt) {
 
 /**
  * The reviewer's build decision, recorded: whether the build is safe, and whether the agent
- * builds it (`allow`), which `permitted` goes on from. `skip` is the override-unsafe step's,
+ * builds it (`allow` and `rescue`), which `permitted` goes on from: the audit routes a clean
+ * lock to the build and a vulnerable one to the rescue. `skip` is the override-unsafe step's,
  * which holds the build unsafe. Their own words are no id, and hold the build unsafe for
  * those reasons.
  * @param {string} work
@@ -578,8 +608,8 @@ function decided(work, record, id, reasons, prompt) {
   return permitted(
     work,
     movedOn(record, {
-      packageManagers: id === "allow",
-      buildSafe: id === "allow" || id === "manual",
+      packageManagers: id === "allow" || id === "rescue",
+      buildSafe: id === "allow" || id === "rescue" || id === "manual",
       buildReasons: reasons,
     }),
     prompt
@@ -844,11 +874,12 @@ function wholeCopy(from, to, called) {
  * The rescue, handed back: the copy's lock audited, whatever the agent answered, and its
  * counts recorded beside the submitted lock's, null where the audit cannot read it in full.
  * Done with the copy as the reviewed source where the output the agent named lies inside
- * `build/` and the copy's lock audits clean, with the linter's comparison of the output with
- * the submitted XPI recorded. Otherwise,
- * or where the agent answered that the rescue failed, the rescue failed: the folder is done
- * with its roots back in `sca/`, before `build/` is removed, the copy left as the agent left
- * it.
+ * `build/`, the copy's lock audits clean, and the linter's comparison of the output with the
+ * submitted XPI matches: only then did none of the vulnerable code ship. An output and a clean
+ * copy without a match is `rescue-mismatch`, the vulnerable code possibly shipped. Without an
+ * output or a clean copy, or where the agent answered that the rescue failed, the rescue
+ * failed. Either way the folder is done with its roots back in `sca/`, before `build/` is
+ * removed, the copy left as the agent left it, and the source as submitted is reviewed.
  * @param {string} work
  * @param {object} record  At `rescue`.
  * @param {AuditContext} context
@@ -868,36 +899,39 @@ async function rescueStep(work, record, context, asked) {
   const rescuedVulnerabilities = found.complete
     ? vulnerabilityCounts(found)
     : null;
-  if (output && isClean(found)) {
+  const built = output && isClean(found);
+  if (built && xpiMatch(output, xpi) === "match") {
     return done(
       work,
       movedOn(record, {
         rescuedVulnerabilities,
         buildResult: BUILD_RESULT.built,
         buildOutput: output,
-        buildMatch: xpiMatch(output, xpi),
+        buildMatch: "match",
       })
     );
   }
   const real = fs.realpathSync(rescued);
   const back = (p) => path.join(fs.realpathSync(sca), path.relative(real, p));
-  const failed = markDone(
+  const dropped = markDone(
     work,
     movedOn(record, {
       rescuedVulnerabilities,
       step: BUILD_CHECK_STEP.done,
       roots: moveTree(record.current.roots, back),
-      buildResult: BUILD_RESULT.rescueFailed,
+      buildResult: built
+        ? BUILD_RESULT.rescueMismatch
+        : BUILD_RESULT.rescueFailed,
       buildOutput: null,
       buildMatch: null,
     })
   );
   removeBuild(work);
-  return { next: "review", record: failed };
+  return { next: "review", record: dropped };
 }
 
 /**
- * Remove the build copy a failed rescue built in.
+ * Remove the build copy a rescue that failed or did not reproduce the XPI built in.
  * @param {string} work
  * @returns {void}
  */
@@ -927,8 +961,8 @@ function producedIn(answer, phase, copy) {
 
 /**
  * A done folder handed back again before its review started - the start before was refused,
- * failed, or was cut short: its review is started once more. A failed rescue cut short has its
- * build copy removed first.
+ * failed, or was cut short: its review is started once more. A rescue that failed or did not
+ * reproduce the XPI, cut short, has its build copy removed first.
  * And the build check's answers file, which no prompt names any more, is deleted again, in
  * case the run that marked the folder was cut short before it could.
  * @param {string} work
@@ -936,7 +970,10 @@ function producedIn(answer, phase, copy) {
  * @returns {Handout}
  */
 function doneAgain(work, record) {
-  if (record.current.buildResult === BUILD_RESULT.rescueFailed) {
+  if (
+    record.current.buildResult === BUILD_RESULT.rescueFailed ||
+    record.current.buildResult === BUILD_RESULT.rescueMismatch
+  ) {
     removeBuild(work);
   }
   return { next: "review", record: markDone(work, record) };
