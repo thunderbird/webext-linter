@@ -20,29 +20,56 @@ import {
   headerValue,
   run,
   submissionFolder,
-  packAddon,
   commandOf,
   workOf,
   readJson,
   handBackRoots,
   handBackUntil,
   LOCKED_SOURCE,
-  unpackSource,
+  nameExperimentFolder,
   unwrapped,
 } from "../cli-run.js";
 
 // ---- --llm-auto-review ----
-// The half of an SCA review a program can do: which file is the add-on, which is the
-// source, and where it is extracted. It reviews nothing - it cannot, until its reader has
-// opened the source archive - so its whole output is that prompt, and every run after it is
-// a hand-back of the work folder, which starts the review itself once the build check is
-// done.
+// The linter reads the submission folder (which file is the add-on, which the source),
+// extracts the source archive into the work folder's sca/ itself, and starts the build check:
+// for an add-on without Experiments its first prompt is `analyze`, and every run after it is
+// a hand-back of the work folder, which starts the review itself once the build check is done.
 
-test("--llm-auto-review prints the prompt, names both files, and reviews nothing", () => {
+// The source was extracted by the linter, so the first prompt is the build analysis, and only
+// an install hook reaching outside the declared dependencies is a safety concern.
+test("--llm-auto-review extracts the source and prints the build analysis", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── SCA Review Prompt ──/);
+  // No review ran yet: no report sections, and no item file was claimed.
+  assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
+  // Nobody is asked to extract anything.
+  assert.doesNotMatch(r.stdout, /SOURCE_ARCHIVE|EXTRACT_TO/);
+  for (const said of [
+    "an install hook that downloads or runs code from outside the declared dependencies",
+  ]) {
+    assert.ok(unwrapped(r.stdout).includes(said), said);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An add-on with Experiments needs its Experiment folder named in the source, which only a
+// reader of it can do: the first prompt is `experiment-folder`, naming the submission's files
+// and where the linter extracted the source, and asking for that folder alone.
+test("--llm-auto-review asks for the Experiment folder of an add-on with Experiments", () => {
+  const dir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { foo: {} } },
+    experimentsFolder: "experiment",
+  });
+  const r = run([
+    dir,
+    "--llm-auto-review",
+    "--allow-experiments",
+    ...OFFLINE_FLAGS,
+  ]);
+  assert.equal(r.code, 0, r.stderr);
   // A name on its own line and its value beneath it, whole: the steps name the values
   // rather than carrying them, so no path has to be read out of a wrapped paragraph.
   assert.match(r.stdout, new RegExp(`\\n  XPI\\n    ${dir}/addon\\.xpi\\n`));
@@ -53,52 +80,48 @@ test("--llm-auto-review prints the prompt, names both files, and reviews nothing
     )
   );
   assert.match(r.stdout, new RegExp(`\\n  FOLDER\\n    ${dir}\\n`));
-  // No review ran: no report sections, and no item file was claimed.
-  assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
-  // The unpack prompt only extracts: the build is the next prompt's.
-  assert.doesNotMatch(r.stdout, /SCA_PACKAGE_ROOT|SCA_BUILD_REPORT|ANSWERS/);
-  // Only an install hook reaching outside the declared dependencies is a safety concern.
-  const analyze = unpackSource(r.stdout);
-  assert.equal(analyze.code, 0, analyze.stderr);
-  for (const said of [
-    "an install hook that downloads or runs code from outside the declared dependencies",
-  ]) {
-    assert.ok(unwrapped(analyze.stdout).includes(said), said);
-  }
+  const work = workOf(r.stdout);
+  assert.equal(readJson(work, "state").current.mode, "experiment-folder");
+  assert.ok(
+    fs.existsSync(path.join(workPaths(work).sca, "experiment", "api.js")),
+    "the linter extracted the source"
+  );
+  assert.ok(!unwrapped(r.stdout).includes("Extract SOURCE_ARCHIVE"));
+  assert.deepEqual(
+    readJson(work, "answers").entries.map((e) => e.index),
+    ["SCA_EXPERIMENTS"]
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A source archive the linter cannot read - not one of the types ATN accepts - ends the run as
+// a failure, naming the archive and the types it takes, and nothing is left to review.
+test("--llm-auto-review refuses a source archive of no accepted type", () => {
+  const dir = submissionFolder();
+  fs.writeFileSync(path.join(dir, "src-4.3.12.tar_ABC.gz"), "not an archive");
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 2, r.stdout);
+  assert.match(r.stderr, /Could not extract the source archive/);
+  assert.match(r.stderr, /\.zip, \.tar, \.7z, \.tar\.gz/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The source is extracted into the review's work folder before the review starts, so the
-// entry point creates that folder - at its default place, beside the .xpi - names its sca/
-// as EXTRACT_TO, writes its record and an empty review file, and hands the folder back with
-// --llm-handback. That hand-back derives the root in sca/ and asks for the build judgement
-// alone.
+// entry point creates that folder - at its default place, beside the .xpi - extracts the
+// source into its sca/, derives the root there and asks for the build judgement alone.
 test("--llm-auto-review creates the work folder and hands it back", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
+  const analyze = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(analyze.code, 0, analyze.stderr);
   const made = fs
     .readdirSync(dir)
     .filter((n) => /^sca-review-addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
   assert.equal(made.length, 1, "one work folder, beside the .xpi");
   const work = path.join(dir, made[0]);
-  // The add-on's copy, which the load put there, and the record.
-  assert.deepEqual(fs.readdirSync(work).sort(), [".review", "xpi"]);
-  // The early-exit checks have not run yet: they run once the source is in sca/, so no
-  // verdict is recorded before them.
-  assert.ok(!("verification" in readJson(work, "state")));
-  assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
-    "answers.json",
-    "state.json",
-  ]);
-  assert.equal(
-    headerValue(r.stdout, "EXTRACT_TO"),
-    `${path.join(work, "sca")}${path.sep}`
+  assert.ok(
+    fs.existsSync(path.join(workPaths(work).sca, "package.json")),
+    "the linter extracted the source into sca/"
   );
-  assert.deepEqual(readJson(work, "answers").entries, []);
-  assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
-  const analyze = unpackSource(r.stdout);
-  assert.equal(analyze.code, 0, analyze.stderr);
   assert.equal(readJson(work, "state").current.step, "analyze");
   assert.equal(headerValue(analyze.stdout, "ANSWERS"), workPaths(work).answers);
   assert.equal(
@@ -159,13 +182,12 @@ test("the hand-back that finishes the build check starts the review", () => {
 // A reviewer who builds the add-on themselves has the review started at once, with no build
 // of the agent's: the build is held safe, and the reviewer answers the build question.
 test("a reviewer who builds it themselves starts a review they build for", () => {
-  const dir = submissionFolder();
+  const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
   const begun = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(begun.code, 0, begun.stderr);
   const work = workOf(begun.stdout);
   const handed = handBackRoots(begun.stdout, {
     managers: "Build it myself",
-    source: LOCKED_SOURCE,
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   // The build check's results, in the record's permanent part: its audit at analyze counted
@@ -197,11 +219,20 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
 
 // A record is checked as a command line is when a review starts from it: one that names an
 // early-exit check in a check list, as no command line can, is the tool's failure, since the
-// record is the linter's alone and the agent cannot repair it. The early-exit checks run in
-// the unpack case, so that is where the recorded flags are read.
+// record is the linter's alone and the agent cannot repair it. For an add-on with
+// Experiments the early-exit checks run in the experiment-folder case, so that is where the
+// recorded flags are read.
 test("a build check record naming an early-exit check fails when its review starts", () => {
-  const dir = submissionFolder();
-  const begun = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  const dir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { foo: {} } },
+    experimentsFolder: "experiment",
+  });
+  const begun = run([
+    dir,
+    "--llm-auto-review",
+    "--allow-experiments",
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(begun.code, 0, begun.stderr);
   const work = workOf(begun.stdout);
   // Written by the linter itself, as an older one that took the flag would have: a record
@@ -209,7 +240,9 @@ test("a build check record naming an early-exit check fails when its review star
   const record = readRecord(work);
   record.flags["checks-skip"] = "experiment-not-allowed";
   writeRecord(work, record);
-  const handed = handBackRoots(begun.stdout);
+  const handed = handBackRoots(begun.stdout, {
+    experimentsFolder: "experiment",
+  });
   assert.equal(handed.code, 2);
   assert.match(
     handed.stderr,
@@ -218,7 +251,7 @@ test("a build check record naming an early-exit check fails when its review star
   assert.match(handed.stderr, /verify failed/);
   assert.equal(
     readJson(work, "state").current.mode,
-    "unpack",
+    "experiment-folder",
     "nothing started"
   );
 });
@@ -231,7 +264,12 @@ test("a build check record naming an early-exit check fails when its review star
 // --allow-experiments most of all, which decides whether the review runs at all.
 test("the build check records the flags its review is started with", () => {
   const dir = submissionFolder();
-  const xpi = path.join(dir, "addon.xpi");
+  // An add-on with Experiments stops at experiment-folder, so a run given it reviews nothing
+  // yet: the one run that empties its caches (--cache-clear) is given it.
+  const expDir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { x: {} } },
+    experimentsFolder: "experiment",
+  });
   // The offline flags every run here is given are recorded too, and left out of what is
   // compared.
   const ownFlags = (work) =>
@@ -242,6 +280,17 @@ test("the build check records the flags its review is started with", () => {
     );
   const begun = (...flags) => {
     const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS, ...flags]);
+    assert.equal(r.code, 0, r.stderr);
+    return r;
+  };
+  const begunExp = (...flags) => {
+    const r = run([
+      expDir,
+      "--llm-auto-review",
+      "--allow-experiments",
+      ...OFFLINE_FLAGS,
+      ...flags,
+    ]);
     assert.equal(r.code, 0, r.stderr);
     return r;
   };
@@ -262,7 +311,7 @@ test("the build check records the flags its review is started with", () => {
     "the started review runs with them"
   );
   // --cache-clear really empties the caches it is given, so this run is given its own.
-  const own = begun(
+  const own = begunExp(
     "--eslint",
     "--verbose",
     "--cache-clear",
@@ -271,22 +320,23 @@ test("the build check records the flags its review is started with", () => {
     ...cacheFlags(freshFixtureCache(), cdnMissCache(FIXTURES_DIR))
   );
   assert.deepEqual(ownFlags(workOf(own.stdout)), {
+    "allow-experiments": true,
     eslint: true,
     verbose: true,
   });
 
   // With no Experiment shipped, the prompt neither asks for the Experiment folder nor
   // records one - and the steps renumber over what survives.
-  const plain = unpackSource(begun().stdout);
+  const plain = nameExperimentFolder(begun().stdout);
   assert.doesNotMatch(plain.stdout, /SCA_EXPERIMENTS|Experiment/);
   assert.match(plain.stdout, /\n4\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
-  // decides: the unpack prompt asks for it, beside the extraction, the unpack review file has
-  // a slot for it, and the started review reads it as the Experiment folder.
-  packAddon(xpi, { experiment_apis: { x: {} } });
-  const exp = begun("--allow-experiments");
-  assert.match(exp.stdout, /SCA_EXPERIMENTS/, "unpack asks for it");
+  // decides: the experiment-folder prompt asks for it in the source the linter extracted, its
+  // review file has a slot for it, and the started review reads it as the Experiment folder.
+  fs.rmSync(dir, { recursive: true, force: true });
+  const exp = begunExp();
+  assert.match(exp.stdout, /SCA_EXPERIMENTS/, "experiment-folder asks for it");
   const work = workOf(exp.stdout);
   assert.deepEqual(readJson(work, "answers").entries, [
     { index: "SCA_EXPERIMENTS", answer: null },
@@ -296,20 +346,26 @@ test("the build check records the flags its review is started with", () => {
     readJson(work, "state").current.report.meta.scaFolders.experiments,
     path.join(work, "sca", "experiment")
   );
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(expDir, { recursive: true, force: true });
 });
 
 // --cache-work-dir is handed to the review the build check starts, as the real folder it
 // names, so the build check and its review read one cache. --cache-clear leaves it alone:
 // it holds what a test seeded, not a cache this tool fills.
 test("the build check records --cache-work-dir for its review", () => {
-  const dir = submissionFolder();
+  // An add-on with Experiments stops at experiment-folder, so this run, which empties its
+  // caches, reviews nothing yet.
+  const dir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { x: {} } },
+    experimentsFolder: "experiment",
+  });
   const seeded = fs.mkdtempSync(path.join(os.tmpdir(), "wl-run-cache-"));
   const kept = path.join(seeded, "osv.json");
   fs.writeFileSync(kept, "{}");
   const r = run([
     dir,
     "--llm-auto-review",
+    "--allow-experiments",
     "--cache-clear",
     ...cacheFlags(freshFixtureCache(), cdnMissCache(FIXTURES_DIR)),
     "--cache-work-dir",
@@ -354,29 +410,45 @@ test("--llm-auto-review hands a skip to the review it prepares", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A hand-back that cannot be read is refused to the agent, with the folder as it was.
+// A hand-back that cannot be read is refused to the agent, with the folder as it was: at
+// experiment-folder, one whose extracted source is gone, and at analyze, one that answers
+// nothing.
 test("a build check refuses an unanswered hand-back", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  const expDir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { x: {} } },
+    experimentsFolder: "experiment",
+  });
+  const r = run([
+    expDir,
+    "--llm-auto-review",
+    "--allow-experiments",
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  const unextracted = run(["--llm-handback", work]);
-  assert.equal(unextracted.code, 2);
+  fs.rmSync(workPaths(work).sca, { recursive: true, force: true });
+  const gone = run(["--llm-handback", work]);
+  assert.equal(gone.code, 2);
   assert.match(
-    unextracted.stdout,
+    gone.stdout,
     /The hand-back was refused: ".+\/sca" is gone, so it is not the folder the source was extracted into/
   );
   // A hand-back that fails takes nothing away: the folder was not this run's to remove.
   assert.ok(fs.existsSync(workPaths(work).state), "the record stays");
-  assert.equal(readJson(work, "state").current.step, "unpack");
-  assert.equal(unpackSource(r.stdout).code, 0);
-  const unanswered = run(["--llm-handback", work]);
+  assert.equal(readJson(work, "state").current.step, "experiment-folder");
+  fs.rmSync(expDir, { recursive: true, force: true });
+
+  const dir = submissionFolder();
+  const analyze = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(analyze.code, 0, analyze.stderr);
+  const at = workOf(analyze.stdout);
+  const unanswered = run(["--llm-handback", at]);
   assert.equal(unanswered.code, 2);
   assert.match(
     unanswered.stdout,
     /The hand-back was refused: SCA_BUILD_SAFETY_ISSUES still has no "answer"/
   );
-  assert.equal(readJson(work, "state").current.step, "analyze");
+  assert.equal(readJson(at, "state").current.step, "analyze");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

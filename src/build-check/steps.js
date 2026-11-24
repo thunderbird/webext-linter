@@ -2,30 +2,30 @@
 // in mode `build-check` does to it, and which prompt comes next.
 //
 // Every build check starts at `analyze`, once the source is in the work folder's `sca/` - the
-// linter's copy of --sca-extracted, or the archive the agent extracted there at `unpack`
-// (--llm-auto-review) - and the early-exit checks passed on it. There the reader reports the
-// build in build.md and hands back the issues the verdict is read off. Where a check the build
-// relies on is switched off (`build-guard`), the folder is done at once: nobody is asked, and
-// the agent builds nothing and runs no package-manager command. Otherwise it audits the package
-// root's lock (./audit.js), before anyone is asked. A lock the audit cannot read in full is
-// done at once: nothing is asked or built, and the review it starts aborts on that lock. So is
-// a lock with a declared dependency nobody can review: the review aborts on that dependency,
-// and nothing is built that runs it. Otherwise an unsafe verdict moves on to `override-unsafe`,
-// which shows the reviewer the Build Review Details and asks them alone whether to skip the
-// build, which is done at once, or to override the verdict and go on as if the build were safe.
-// A safe verdict, or an overridden one, moves on to `decision`, which shows the Build Review
-// Details where `override-unsafe` did not and asks them alone for the one decision about the
-// build: let the agent build or build it themselves, or hold it unsafe for reasons of their own
-// (pre-answered where the hot runs switched the agent's builds on, which skips both steps).
-// Unless they let the agent build, the folder is done at once: a rescue runs package-manager
-// commands, so none is tried. Otherwise the audit decides.
-// A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`, and the
-// agent builds the original there, as the lock pins it, and names what the build produced, or
-// that it failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work
-// folder (`rescued/`), and moves on to `rescue`: the agent reduces or fixes the copy's
-// dependencies with lock-only commands and audits them until no high or critical advisory
-// remains. Only then it builds, in a fresh copy of the whole `rescued/` in `build/`, so
-// nothing is ever installed or built in the rescued copy. It names what the build produced,
+// linter's copy of --sca-extracted, or the source archive the linter extracted there itself
+// (--llm-auto-review, src/addon/source-archive.js) - and the early-exit checks passed on it.
+// There the reader reports the build in build.md and hands back the issues the verdict is read
+// off. Where a check the build relies on is switched off (`build-guard`), the folder is done at
+// once: nobody is asked, and the agent builds nothing and runs no package-manager command.
+// Otherwise it audits the package root's lock (./audit.js), before anyone is asked. A lock the
+// audit cannot read in full is done at once: nothing is asked or built, and the review it
+// starts aborts on that lock. So is a lock with a declared dependency nobody can review: the
+// review aborts on that dependency, and nothing is built that runs it. Otherwise an unsafe
+// verdict moves on to `override-unsafe`, which shows the reviewer the Build Review Details and
+// asks them alone whether to skip the build, which is done at once, or to override the verdict
+// and go on as if the build were safe. A safe verdict, or an overridden one, moves on to
+// `decision`, which shows the Build Review Details where `override-unsafe` did not and asks
+// them alone for the one decision about the build: let the agent build or build it themselves,
+// or hold it unsafe for reasons of their own (pre-answered where the hot runs switched the
+// agent's builds on, which skips both steps). Unless they let the agent build, the folder is
+// done at once: a rescue runs package-manager commands, so none is tried. Otherwise the audit
+// decides. A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`,
+// and the agent builds the original there, as the lock pins it, and names what the build
+// produced, or that it failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the
+// same work folder (`rescued/`), and moves on to `rescue`: the agent reduces or fixes the
+// copy's dependencies with lock-only commands and audits them until no high or critical
+// advisory remains. Only then it builds, in a fresh copy of the whole `rescued/` in `build/`,
+// so nothing is ever installed or built in the rescued copy. It names what the build produced,
 // or that the rescue failed. The linter audits the copy again, whatever the agent answered,
 // records its counts beside the submitted lock's, and checks the output it names. Where both
 // hold, the copy is reviewed instead of the original. Otherwise `build/` is deleted and the
@@ -154,23 +154,24 @@ function agentBuildsSwitchedOn() {
  */
 
 /**
- * Whether `unpack` asks for the Experiment folder: the built add-on declares Experiments, as
- * the load read it. It is asked there, beside the extracted archive, so the package root is
- * settled with it known. A review given --sca-extracted was given it (--sca-experiments).
+ * Whether `experiment-folder` asks for the Experiment folder: the built add-on declares
+ * Experiments, as the load read it. It is asked there, beside the extracted archive, so the
+ * package root is settled with it known. A review given --sca-extracted was given it
+ * (--sca-experiments).
  * @param {object} record  The record, in any mode.
  * @returns {boolean}
  */
 export function asksExperiments(record) {
-  return modeOf(record) === MODE.unpack && record.submission.experiments;
+  return modeOf(record) === MODE.experimentFolder && record.submission.experiments;
 }
 
 /**
- * The entries `unpack` asks for: the Experiment folder where it is asked (asksExperiments),
- * else none.
- * @param {object} record  In mode unpack.
+ * The entries `experiment-folder` asks for: the Experiment folder where it is asked
+ * (asksExperiments), else none.
+ * @param {object} record  In mode experiment-folder.
  * @returns {object[]}
  */
-export function unpackEntries(record) {
+export function experimentFolderEntries(record) {
   return asksExperiments(record) ? [{ index: EXPERIMENTS, [SLOT]: null }] : [];
 }
 
@@ -384,16 +385,16 @@ export async function handBack(work, record, registry) {
 }
 
 /**
- * The Experiment folder `unpack` handed back where it asked for one, as the agent wrote it,
- * else undefined. It names the folder as an absolute path inside EXTRACT_TO, which the
- * hand-back approves with the sca folders (src/addon/package-root.js approveScaFolders). A
+ * The Experiment folder `experiment-folder` handed back where it asked for one, as the agent
+ * wrote it, else undefined. It names the folder as an absolute path inside EXTRACT_TO, which
+ * the hand-back approves with the sca folders (src/addon/package-root.js approveScaFolders). A
  * blank answer or a relative one names no folder there, and is refused.
  * @param {string} work
- * @param {object} record  In mode unpack.
+ * @param {object} record  In mode experiment-folder.
  * @returns {string|undefined}
  * @throws {HandbackRefused}
  */
-export function unpackedExperiments(work, record) {
+export function namedExperimentFolder(work, record) {
   if (!asksExperiments(record)) {
     return undefined;
   }
@@ -411,7 +412,7 @@ export function unpackedExperiments(work, record) {
   const answer = answersOf(
     handed,
     [{ index: EXPERIMENTS, [SLOT]: null }],
-    { name: "unpack", answer: "words" },
+    { name: "experiment-folder", answer: "words" },
     keyOf
   )
     .get(EXPERIMENTS)
@@ -783,9 +784,9 @@ function moveTree({ source, ...inTree }, to) {
 }
 
 /**
- * The folder the source was extracted into, real: it must be a folder itself, not a link
- * to one, since everything inside it is taken as the submission's source. Asked of the
- * agent's answer at `unpack` (misplacedFolders words why it is not), and found as it was by
+ * The folder the source was extracted into, real: it must be a folder itself, not a link to
+ * one, since everything inside it is taken as the submission's source. Asked of the agent's
+ * answer at `experiment-folder` (misplacedFolders words why it is not), and found as it was by
  * every later step, whose hand-back checked it first (src/review/record.js namedFolders).
  * @param {ReturnType<typeof workPaths>} paths
  * @returns {string}
@@ -992,20 +993,21 @@ function handbackCommand(work) {
 }
 
 /**
- * The prompt a record in mode unpack or build-check is waiting on, its step's own
+ * The prompt a record in mode experiment-folder or build-check is waiting on, its step's own
  * (`llm-sca-review-prompt`): printed by the run that starts the mode (`first`, with the intro,
- * on the review's first prompt) and by every hand-back that moves it on. What each prompt
- * names beside its steps follows its step: the submission and where to extract it (`unpack`),
- * the source, its package root and the build report (`analyze`), the Build Review Details
- * (`decision`), and the folders a build runs in. Every build runs at the package root's place
- * in `build/`, the linter compares its output with the submitted XPI, and the rescue's agent makes
- * `build/` a copy of the whole `rescued/` before each build, with the two commands named here.
+ * on the review's first prompt) and by every hand-back that moves it on. What each prompt names
+ * beside its steps follows its step: the submission and where it was extracted
+ * (`experiment-folder`), the source, its package root and the build report (`analyze`), the
+ * Build Review Details (`decision`), and the folders a build runs in. Every build runs at the
+ * package root's place in `build/`, the linter compares its output with the submitted XPI, and
+ * the rescue's agent makes `build/` a copy of the whole `rescued/` before each build, with the
+ * two commands named here.
  * @param {string} work
  * @param {object} record  At the step its prompt is for.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{first?: boolean, submission?: {folder: string, xpi: string, source: string}}}
  *   [start]  On the run that starts the mode: the intro where it is the review's first
- *   prompt, and for `unpack` the submission (scaSubmission).
+ *   prompt, and for `experiment-folder` the submission (scaSubmission).
  * @returns {string[]}
  */
 export function stepPromptLines(work, record, registry, start = {}) {
@@ -1014,7 +1016,7 @@ export function stepPromptLines(work, record, registry, start = {}) {
   const roots = record.current?.roots;
   const buildRoot = () => buildRootOf(work, roots);
   const named = {
-    unpack: () => ({
+    "experiment-folder": () => ({
       submission: start.submission,
       extractTo: `${paths.sca}${path.sep}`,
       // The Experiment folder is handed back in the answers file, where it is asked.

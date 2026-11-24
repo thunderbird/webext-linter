@@ -212,7 +212,7 @@
           </li>
           <li><a href="#hand-back">3 · The hand-back</a>
             <ul>
-              <li><a href="#the-unpack-case">3.1 · the unpack case</a></li>
+              <li><a href="#the-experiment-folder-case">3.1 · the experiment-folder case</a></li>
               <li><a href="#the-build-check-case">3.2 · the build-check case</a></li>
               <li><a href="#the-review-case">3.3 · the review case</a></li>
               <li><a href="#the-downgrade-case">3.4 · the downgrade case</a></li>
@@ -387,7 +387,7 @@ flowchart TB
           <tr><td><code>--llm-skip-summary</code></td><td>Leaves the summary report out of the review. Needs <code>--llm-review</code> or <code>--llm-auto-review</code>. It is the one member of <code>PROMPT_SKIPS</code> (<code>src/config.js</code>), the skips a registry step's <code>when:</code> reads.</td><td>yes</td></tr>
           <tr><td><code>--llm-skip-sweep</code></td><td>Leaves the sweep out: no sweep request is made, so no step that starts a sweep agent prints. Needs <code>--llm-review</code> or <code>--llm-auto-review</code>.</td><td>yes</td></tr>
           <tr><td colspan="3"><strong>Source code archive (SCA)</strong></td></tr>
-          <tr><td><code>--sca-extracted &lt;folder&gt;</code></td><td>The extracted source, all of it: a folder that is there, which must not hold the add-on. It switches the run to ①b/②b. The linter never opens a source archive itself.</td><td>no: the record names <code>sca/</code> itself</td></tr>
+          <tr><td><code>--sca-extracted &lt;folder&gt;</code></td><td>The extracted source, all of it: a folder that is there, which must not hold the add-on. It switches the run to ①b/②b. Only ③ extracts a source archive itself ("extract the source archive", 4.2).</td><td>no: the record names <code>sca/</code> itself</td></tr>
           <tr><td><code>--sca-package-root &lt;folder&gt;</code></td><td>The package-root hint. Needs <code>--sca-extracted</code>. Read like every folder flag, from the directory the run starts in, and approved against <code>--sca-extracted</code> by "approve the sca folders" (section 4.3).</td><td>no</td></tr>
           <tr><td><code>--sca-experiments &lt;path&gt;</code></td><td>The Experiment folder, relative to <code>--sca-extracted</code> or absolute inside it. Needs <code>--sca-extracted</code>. Approved by "approve the sca folders", and named exactly when the add-on declares Experiments (①b/②b's check after the load).</td><td>no</td></tr>
           <tr><td colspan="3"><strong>Other</strong></td></tr>
@@ -470,7 +470,7 @@ flowchart TB
       <h3 id="main-flags-carried">1.5 · The flags a review carries on</h3>
       <ul>
         <li><strong>What the record holds</strong> (<code>forwardedFlags</code>): every flag <code>OPTIONS</code> declares and the run was given, named without its dashes, minus <code>NOT_FORWARDED</code>. Those are <code>--llm-auto-review</code>, <code>--llm-review</code> and <code>--llm-handback</code>, which run or carry on a review rather than describe one, <code>--cache-clear</code> and <code>--report-format</code>, which are the run's own, and the three <code>--sca-*</code> flags, whose folders the record names itself. Every entry point adds them to the record right after the load (<code>addGiven</code>). A folder among them is already the real, absolute folder, so it means the same wherever the review is started, and a record never names a folder for a later run to delete.</li>
-        <li><strong>What a later run takes from it</strong> (<code>recordedValues</code>, for the review the unpack case, the build check's done case and the restart start): only the flags <code>OPTIONS</code> declares and <code>NOT_FORWARDED</code> leaves, each of its declared type, a boolean as <code>true</code> or <code>false</code> (<code>false</code> left out) and a string as a string. Then <code>--llm-review</code> is set, and the three value checks are asked. A record without a submission, or with a flag of the wrong type or a value the checks refuse, is a failure (<code>recordError</code>): the agent cannot repair it. The review and downgrade cases read only <code>--warnings-as-errors</code>, as the band policy every later pass reads under (<code>bandPolicyOf</code>).</li>
+        <li><strong>What a later run takes from it</strong> (<code>recordedValues</code>, for the review ③ without Experiments, the experiment-folder case, the build check's done case and the restart start): only the flags <code>OPTIONS</code> declares and <code>NOT_FORWARDED</code> leaves, each of its declared type, a boolean as <code>true</code> or <code>false</code> (<code>false</code> left out) and a string as a string. Then <code>--llm-review</code> is set, and the three value checks are asked. A record without a submission, or with a flag of the wrong type or a value the checks refuse, is a failure (<code>recordError</code>): the agent cannot repair it. The review and downgrade cases read only <code>--warnings-as-errors</code>, as the band policy every later pass reads under (<code>bandPolicyOf</code>).</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -488,7 +488,7 @@ flowchart TB
         of checks the path calls one of the review functions (section 4): "report the review",
         which prints the report, "start the review loop", which starts the review and advances
         it to its first phase, or, for an LLM review the early-exit checks rejected, "close the
-        review", which issues the closing prompt or the restart prompt. The path's other ends issue their own hand-back prompt (unpack, analyze, a
+        review", which issues the closing prompt or the restart prompt. The path's other ends issue their own hand-back prompt (experiment-folder, analyze, a
         build check step). Every run then ends in a green "exit handling", with its exit code, and where the
         agent carries on a red "continue after hand-back" names the mode and step the next run
         continues in (section 3). After a review function the red circle is dotted: it
@@ -502,8 +502,8 @@ flowchart TB
       <ul>
         <li><strong>Three entry functions,</strong> one per graph in section 2: ①a/②a (an <code>.xpi</code>), ①b/②b (an <code>.xpi</code> with <code>--sca-extracted</code>), and ③ (<code>--llm-auto-review</code> of a submission folder). The "plain or LLM?" decision is a mode parameter, not a second function.</li>
         <li><strong>An entry function ends where its run ends:</strong> at its first green "exit handling", where the dotted frames end. The red "continue after hand-back" after it is drawn inside the same frame, and inside the same coloured box, so the two read together (2026-10-27). It is still no step of the run, but where the next one picks up. Everything after that is a case of the hand-back, handled once, the same way for every path.</li>
-        <li><strong>An entry point only starts unpack or a build check:</strong> the record written and the first prompt printed. "build-check" is no subroutine: the hand-back moves a build check on.</li>
-        <li><strong>Both source paths end the same way</strong> once the source is in <code>sca/</code>: settle the package root, populate ctx, the early-exit checks, and the build check started at <code>analyze</code> (or for ①b the normal checks). They differ only in the one step that puts the source into <code>sca/</code>, the linter's copy or the agent's extraction.</li>
+        <li><strong>An entry point only starts experiment-folder or a build check:</strong> the record written and the first prompt printed. "build-check" is no subroutine: the hand-back moves a build check on.</li>
+        <li><strong>Both source paths end the same way</strong> once the source is in <code>sca/</code>: settle the package root, populate ctx, the early-exit checks, and the build check started at <code>analyze</code> (or for ①b the normal checks). They differ only in the one step that puts the source into <code>sca/</code>, the copy of <code>--sca-extracted</code> or the extraction of the source archive.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -603,7 +603,7 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>①b checks <code>--sca-experiments</code> in its path,</strong> between the load and the copy, as ②b does, and not inside the review. Before the copy that check asks only whether an Experiment folder is named exactly when the add-on declares Experiments. Whether it fits the package root is asked before the load, by "approve the sca folders". It is the one place the question is asked (2026-10-28): "populate ctx" does not ask it again. In ③ the question needs no check, since <code>unpack</code> asks for the folder only where the add-on declares Experiments (<code>asksExperiments</code>), and an asked folder missing from the answer is refused.</li>
+        <li><strong>①b checks <code>--sca-experiments</code> in its path,</strong> between the load and the copy, as ②b does, and not inside the review. Before the copy that check asks only whether an Experiment folder is named exactly when the add-on declares Experiments. Whether it fits the package root is asked before the load, by "approve the sca folders". It is the one place the question is asked (2026-10-28): "populate ctx" does not ask it again. In ③ the question needs no check, since <code>experiment-folder</code> asks for the folder only where the add-on declares Experiments (<code>asksExperiments</code>), and an asked folder missing from the answer is refused.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -617,7 +617,10 @@ flowchart TB
   A0 -- "neither: a bad command line" --> A0p[["print the message<br/>(stderr: what the folder holds)"]] --> A0g(("exit<br/>handling<br/>nothing created, exit 2")):::final
   A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   FNxe -. "a hand-back prompt issued" .-> FNxr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
-  A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> U0[["start a mode<br/>unpack"]] --> Uiw[["issue a hand-back prompt<br/>unpack"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode unpack")):::stop
+  A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> X0[["extract the source archive<br/>into sca/"]] --> XE{{"does the add-on<br/>declare Experiments?"}}
+  XE -- yes --> U0[["start a mode<br/>experiment-folder"]] --> Uiw[["issue a hand-back prompt<br/>experiment-folder"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode experiment-folder")):::stop
+  XE -- no --> XA[["add to the record<br/>the folder sca/"]] --> XS[["settle the package root<br/>no sca folders"]] --> XR[["review the loaded submission<br/>LLM"]] --> XRe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
+  XRe -. "a hand-back prompt issued" .-> XRr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph FM ["main"]
     A0
     subgraph DD6 ["D"]
@@ -637,11 +640,21 @@ flowchart TB
   subgraph FC ["autoReview"]
     L4
     AG4
+    X0
+    XE
     U0
     Uiw
     Ure
     Ur
+    XA
+    XS
+    subgraph DA3 ["A"]
+      XR
+      XRe
+      XRr
+    end
   end
+  style DA3 fill:#fde68a,stroke:#a16207,stroke-width:2.5px,color:#1d1d1b
   style FM fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
   style FX fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
   style FC fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
@@ -656,6 +669,12 @@ flowchart TB
   click FNxr href "#hand-back"
   click L4 href "#load-the-xpi"
   click AG4 href "#add-to-the-record"
+  click X0 href "#extract-the-source-archive"
+  click XA href "#add-to-the-record"
+  click XS href "#settle-the-package-root"
+  click XR href "#review-the-loaded-submission"
+  click XRe href "#exit-handling-the-files-the-code"
+  click XRr href "#hand-back"
   click U0 href "#start-a-mode"
   click Uiw href "#issue-a-hand-back-prompt-and-issue-the-closing-prompt"
   click Ure href "#exit-handling-the-files-the-code"
@@ -678,7 +697,7 @@ flowchart TB
       <h2 id="hand-back">3 · The hand-back</h2>
       <p>
         One entry point for every later run (<code>runHandback</code>, <code>handBack</code>, <code>accept</code>), a switch on <code>state.json</code>'s mode. A run
-        populates ctx only where it runs checks: in the <code>unpack</code> case, for the
+        populates ctx only where it runs checks: in the <code>experiment-folder</code> case, for the
         early-exit checks, which need the source, and when the build check is done, for the
         normal checks. Whatever an earlier run decided, the hand-back reads from
         <code>state.json</code>, and rebuilds only ctx. An answer of the agent's that a case
@@ -687,7 +706,7 @@ flowchart TB
         that pass. The build check has a third outcome: a missing answers file or a missing entry
         hands the step's question out again, exit 0 (3.2.1), and at <code>rescue</code> an output
         path the output check refuses counts as a failed rescue, not a refusal (3.2.6). At
-        <code>unpack</code>, entries other than <code>SCA_EXPERIMENTS</code> are ignored (3.1.1).
+        <code>experiment-folder</code>, entries other than <code>SCA_EXPERIMENTS</code> are ignored (3.1.1).
       </p>
 
       <div class="flow">
@@ -702,7 +721,7 @@ flowchart TB
   HM -- yes --> HG{{"the folders the record names still real folders?<br/>the submission's folders, as added to the record<br/>misplacedFolders"}}
   HG -- "one is gone, a link or no folder" --> HGp[["print the message<br/>(stderr: the message and verify failed)<br/>nothing written"]] --> HGg(("exit<br/>handling<br/>files kept, exit 2")):::final
   HG -- yes --> SW{{"which mode?"}}
-  SW -- "unpack" --> CU(["the unpack case, below"])
+  SW -- "experiment-folder" --> CU(["the experiment-folder case, below"])
   SW -- "build-check" --> CB(["the build-check case, below"])
   SW -- "review" --> CR(["the review case, below"])
   SW -- "downgrade" --> CG(["the downgrade case, below"])
@@ -727,7 +746,7 @@ flowchart TB
   click HMg href "#exit-handling-the-files-the-code"
   click HGp href "#print-the-message"
   click HGg href "#exit-handling-the-files-the-code"
-  click CU href "#the-unpack-case"
+  click CU href "#the-experiment-folder-case"
   click CB href "#the-build-check-case"
   click CR href "#the-review-case"
   click CG href "#the-downgrade-case"
@@ -753,17 +772,17 @@ flowchart TB
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
-      <h3 id="the-unpack-case">3.1 · the unpack case</h3>
+      <h3 id="the-experiment-folder-case">3.1 · the experiment-folder case</h3>
       <div class="flow">
         <div class="stack">
           <div>
             <pre class="mermaid">
 flowchart TB
-  T(["state.json: mode unpack"]) --> SU{{"unpack: the agent's sca/<br/>a real folder, not a link? realSca"}}
-  SU -- "no: not extracted there" --> SUi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> SUe(("exit<br/>handling<br/>files kept, exit 2")):::final --> SUr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
-  SU -- yes --> HX["read the Experiment answer, where asked<br/>trimmed, unpackedExperiments"]
+  T(["state.json: mode experiment-folder"]) --> SU{{"experiment-folder: sca/<br/>still a real folder, not a link? realSca"}}
+  SU -- "no: gone or replaced" --> SUi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> SUe(("exit<br/>handling<br/>files kept, exit 2")):::final --> SUr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
+  SU -- yes --> HX["read the Experiment answer<br/>trimmed, namedExperimentFolder"]
   HX -- "blank, or not an absolute path" --> HXi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HXe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HXr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
-  HX -- "absolute, or not asked" --> HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
+  HX -- "absolute" --> HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
   HK -- "throws ScaFoldersRejected: caught,<br/>thrown on as a refusal" --> HKi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HKe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HKr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
   HK -- "the sca folders, relative" --> HKa[["add to the record<br/>the folder sca/"]] --> HST[["settle the package root<br/>the sca folders, relative"]] --> HU[["review the loaded submission<br/>LLM"]] --> HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   HUe -. "a hand-back prompt issued" .-> HUr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
@@ -794,7 +813,7 @@ flowchart TB
   click SUi href "#print-the-message"
   click SUe href "#exit-handling-the-files-the-code"
   click SUr href "#hand-back"
-  click HX href "#unpack-step"
+  click HX href "#experiment-folder-step"
   click HXi href "#print-the-message"
   click HXe href "#exit-handling-the-files-the-code"
   click HXr href "#hand-back"
@@ -817,17 +836,17 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>The Experiment folder question at <code>unpack</code></strong> reads whether the manifest declares Experiments from the loaded <code>xpi/</code>.</li>
+        <li><strong>The mode is entered only for an add-on with Experiments:</strong> whether the manifest declares them is read from the loaded <code>xpi/</code>. Without Experiments, ③ goes on from the extraction at once, as this case does after the agent's answer.</li>
       </ul>
 
-      <h4 id="unpack-step">3.1.1 · What the unpack step asks and accepts</h4>
+      <h4 id="experiment-folder-step">3.1.1 · What the experiment-folder step asks and accepts</h4>
       <ul>
-        <li><strong>Who starts it.</strong> Only ③ with a source archive (<code>autoReview</code> in src/cli.js): it loads the <code>.xpi</code> into a new work folder of kind <code>sca</code>, adds what was given to the record, starts mode <code>unpack</code> with an empty body at step <code>unpack</code>, and issues a hand-back prompt with the entries <code>unpackEntries</code> returns. The prompt is <code>llm-sca-review-prompt.unpack</code>, with <code>llm-sca-review-prompt.intro</code> before it, since it is the review's first prompt. The run exits 0.</li>
-        <li><strong>What the prompt names.</strong> A "Submission" block with <code>XPI</code>, <code>SOURCE_ARCHIVE</code> and <code>FOLDER</code> (the submission folder as <code>src/addon/submission.js</code> read it) and <code>EXTRACT_TO</code>, the work folder's <code>sca/</code> with a trailing separator. <code>ANSWERS</code> (<code>.review/answers.json</code>) is named only where the step asks for the Experiment folder. The command to run is <code>--llm-handback</code> on the work folder, and nothing else.</li>
-        <li><strong>What it asks of the agent.</strong> To extract the archive into <code>EXTRACT_TO</code> until the add-on's own files appear, to leave every archive found inside the tree packed, to move and rename nothing, and then to run the command. The linter never opens a source archive itself.</li>
-        <li><strong>The find-experiment condition.</strong> A step of the list marked <code>when: find-experiment</code> is printed only where <code>asksExperiments</code> holds: the record is in mode <code>unpack</code> and <code>submission.experiments</code> is true. That fact is added with what was given, from the loaded <code>xpi/</code>'s manifest (<code>isExperiment</code>, a declared <code>experiment_apis</code>). <code>find-experiment</code> is one of the two facts these prompts' conditions can name (<code>SCA_PROMPT_FACTS</code>), checked in the condition language the review loop's steps use. The other is <code>build-overridden</code>, at <code>decision</code> (3.2.3). The two marked steps ask the agent to find the folder holding the Experiment implementation anywhere under <code>EXTRACT_TO</code> and to write its absolute path into the answer slot.</li>
-        <li><strong>The answer slots.</strong> The answers file holds one entry, <code>index: "SCA_EXPERIMENTS"</code> with <code>answer: null</code>, where the condition holds, and no entry otherwise. <code>EXTRACT_TO</code> is no slot: the agent extracts into the folder the linter named, and the hand-back looks there.</li>
-        <li><strong>The order of the hand-back.</strong> <code>realSca</code> first, then <code>unpackedExperiments</code>, then "approve the sca folders" with the source <code>sca/</code> (real) and, where asked, the Experiment folder. Each throws a refusal (a D box, nothing written) on what it cannot take. Only then is anything written: the folder <code>sca/</code> added to the record, the package root settled, the flags rebuilt from the record (<code>recordedValues</code>, a failure where the record does not hold them as a command line would), and "review the loaded submission" called with LLM.</li>
+        <li><strong>Who starts it.</strong> Only ③ with a source archive whose add-on declares Experiments (<code>autoReview</code> in src/cli.js): it loads the <code>.xpi</code> into a new work folder of kind <code>sca</code>, adds what was given to the record, extracts the source archive into <code>sca/</code> ("extract the source archive", 4.2), starts mode <code>experiment-folder</code> with an empty body at step <code>experiment-folder</code>, and issues a hand-back prompt with the entries <code>experimentFolderEntries</code> returns. The prompt is <code>llm-sca-review-prompt.experiment-folder</code>, with <code>llm-sca-review-prompt.intro</code> before it, since it is the review's first prompt. The run exits 0.</li>
+        <li><strong>What the prompt names.</strong> A "Submission" block with <code>XPI</code>, <code>SOURCE_ARCHIVE</code> and <code>FOLDER</code> (the submission folder as <code>src/addon/submission.js</code> read it) and <code>EXTRACT_TO</code>, the work folder's <code>sca/</code> with a trailing separator, where the linter extracted the source. <code>ANSWERS</code> (<code>.review/answers.json</code>) holds the question. The command to run is <code>--llm-handback</code> on the work folder, and nothing else.</li>
+        <li><strong>What it asks of the agent.</strong> To name the Experiment folder in the extracted source, and then to run the command. The agent extracts nothing.</li>
+        <li><strong>The find-experiment condition.</strong> A step of the list marked <code>when: find-experiment</code> is printed only where <code>asksExperiments</code> holds: the record is in mode <code>experiment-folder</code> and <code>submission.experiments</code> is true, which holds whenever the mode is entered. That fact is added with what was given, from the loaded <code>xpi/</code>'s manifest (<code>isExperiment</code>, a declared <code>experiment_apis</code>). <code>find-experiment</code> is one of the two facts these prompts' conditions can name (<code>SCA_PROMPT_FACTS</code>), checked in the condition language the review loop's steps use. The other is <code>build-overridden</code>, at <code>decision</code> (3.2.3). The two marked steps ask the agent to find the folder holding the Experiment implementation anywhere under <code>EXTRACT_TO</code> and to write its absolute path into the answer slot.</li>
+        <li><strong>The answer slots.</strong> The answers file holds one entry, <code>index: "SCA_EXPERIMENTS"</code> with <code>answer: null</code>. <code>EXTRACT_TO</code> is no slot: the linter extracted into it, and the hand-back looks there.</li>
+        <li><strong>The order of the hand-back.</strong> <code>realSca</code> first, then <code>namedExperimentFolder</code>, then "approve the sca folders" with the source <code>sca/</code> (real) and the Experiment folder. Each throws a refusal (a D box, nothing written) on what it cannot take. Only then is anything written: the folder <code>sca/</code> added to the record, the package root settled, the flags rebuilt from the record (<code>recordedValues</code>, a failure where the record does not hold them as a command line would), and "review the loaded submission" called with LLM.</li>
       </ul>
       <table>
         <thead>
@@ -835,10 +854,10 @@ flowchart TB
         </thead>
         <tbody>
           <tr><td><code>sca/</code> gone, a symbolic link, or no folder</td><td><code>realSca</code> (<code>misplacedFolders</code>)</td><td>refused: not the folder the source was extracted into</td></tr>
-          <tr><td>the answers file unreadable, not JSON, or without an <code>entries</code> list</td><td><code>readHandback</code></td><td>refused (asked only where the Experiment folder is asked)</td></tr>
-          <tr><td><code>SCA_EXPERIMENTS</code> a string of blanks only</td><td><code>unpackedExperiments</code></td><td>refused: names no folder</td></tr>
+          <tr><td>the answers file unreadable, not JSON, or without an <code>entries</code> list</td><td><code>readHandback</code></td><td>refused</td></tr>
+          <tr><td><code>SCA_EXPERIMENTS</code> a string of blanks only</td><td><code>namedExperimentFolder</code></td><td>refused: names no folder</td></tr>
           <tr><td><code>SCA_EXPERIMENTS</code> missing, twice, still null, or not a non-empty string</td><td><code>answersOf</code>, as words</td><td>refused</td></tr>
-          <tr><td><code>SCA_EXPERIMENTS</code>, trimmed, not an absolute path</td><td><code>unpackedExperiments</code></td><td>refused: name it as the absolute path inside <code>EXTRACT_TO</code></td></tr>
+          <tr><td><code>SCA_EXPERIMENTS</code>, trimmed, not an absolute path</td><td><code>namedExperimentFolder</code></td><td>refused: name it as the absolute path inside <code>EXTRACT_TO</code></td></tr>
           <tr><td>the folder, links followed, outside <code>sca/</code> or no folder</td><td>"approve the sca folders" (<code>outside</code>, <code>not-folder</code>)</td><td>refused: not a folder inside <code>sca/</code></td></tr>
           <tr><td>the folder is <code>sca/</code> itself, or holds it</td><td>"approve the sca folders" (<code>is-source</code>, <code>holds-root</code>)</td><td>refused: it is <code>EXTRACT_TO</code> itself, name the subfolder</td></tr>
           <tr><td>the folder holds no file, links not followed</td><td>"approve the sca folders" (<code>empty</code>)</td><td>refused: name the folder holding the Experiment implementation</td></tr>
@@ -846,10 +865,10 @@ flowchart TB
         </tbody>
       </table>
       <ul>
-        <li><strong>What is not read.</strong> Where the Experiment folder is not asked, the answers file is not read at all. Where it is asked, only the <code>SCA_EXPERIMENTS</code> entries are read, and any other entry in the file is ignored. The answer is trimmed before it is taken.</li>
-        <li><strong>The archive itself, or one holding the package root.</strong> No package-root hint is given at <code>unpack</code>, so the root starts at <code>sca/</code> itself, and an Experiment folder that holds it is <code>sca/</code> itself or a folder above it. Both are refused with the same problem, that the folder is <code>EXTRACT_TO</code> itself (<code>unpackProblem</code>).</li>
+        <li><strong>What is not read.</strong> Only the <code>SCA_EXPERIMENTS</code> entries are read, and any other entry in the file is ignored. The answer is trimmed before it is taken.</li>
+        <li><strong>The archive itself, or one holding the package root.</strong> No package-root hint is given at <code>experiment-folder</code>, so the root starts at <code>sca/</code> itself, and an Experiment folder that holds it is <code>sca/</code> itself or a folder above it. Both are refused with the same problem, that the folder is <code>EXTRACT_TO</code> itself (<code>experimentFolderProblem</code>).</li>
         <li><strong>How the package root is found after it.</strong> "settle the package root" with <code>sca/</code> and the approved Experiment folder, no hint: <code>sca/</code> is the root where it holds <code>package.json</code>. Otherwise <code>packageRootBelow</code> walks down while a folder holds exactly one subfolder (<code>node_modules</code> and dot folders are not counted, links are no folders), ends where a folder on the way holds <code>package.json</code>, and at the first fork takes the one sibling holding <code>package.json</code>, or of several the one with a lock beside it, or none. A folder found inside the Experiment folder is not taken. Where nothing is taken, <code>sca/</code> stays the root. A move is passed on as <code>scaMoved</code>, which "populate ctx" prints.</li>
-        <li><strong>What follows.</strong> "review the loaded submission" runs the early-exit checks on the <code>.xpi</code> and the source, reusing the Experiment verdict where the record already holds one. A run that does not pass closes the review (mode review at the close, or mode downgrade). A run that passes starts mode <code>build-check</code> at <code>analyze</code> with <code>buildCheckBody</code> of the settled roots, and issues the <code>analyze</code> prompt without the intro, which the agent read at <code>unpack</code>. The run exits 0 after the <code>analyze</code> prompt.</li>
+        <li><strong>What follows.</strong> "review the loaded submission" runs the early-exit checks on the <code>.xpi</code> and the source, reusing the Experiment verdict where the record already holds one. A run that does not pass closes the review (mode review at the close, or mode downgrade). A run that passes starts mode <code>build-check</code> at <code>analyze</code> with <code>buildCheckBody</code> of the settled roots, and issues the <code>analyze</code> prompt without the intro, which the agent read at <code>experiment-folder</code>. The run exits 0 after the <code>analyze</code> prompt.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -901,7 +920,7 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>The mode after unpack is called build-check</strong> (2026-10-28). With unpack a mode of its own, every step left in it is about the build: <code>analyze</code> (the agent analyzes the build, the linter decides whether it is safe), <code>override-unsafe</code> where it is judged unsafe (whether the reviewer overrides that), <code>decision</code> (whether it may run, and who builds), <code>build</code> (the clean original built and its output compared with the <code>.xpi</code>), <code>rescue</code> where it is needed, and <code>done</code>. So the record reads, for example, "mode build-check at build". The noun is the build check.</li>
+        <li><strong>The mode after experiment-folder is called build-check</strong> (2026-10-28). With experiment-folder a mode of its own, every step left in it is about the build: <code>analyze</code> (the agent analyzes the build, the linter decides whether it is safe), <code>override-unsafe</code> where it is judged unsafe (whether the reviewer overrides that), <code>decision</code> (whether it may run, and who builds), <code>build</code> (the clean original built and its output compared with the <code>.xpi</code>), <code>rescue</code> where it is needed, and <code>done</code>. So the record reads, for example, "mode build-check at build". The noun is the build check.</li>
       </ul>
 
       <h4 id="take-the-build-check-step">3.2.1 · How a step is taken: "take the build-check step"</h4>
@@ -1221,7 +1240,7 @@ flowchart TB
         and "exit handling", which end every run, are in section 6.
       </p>
       <ul>
-        <li><strong>The rule for a building block</strong> (2026-10-27): a common subroutine does only what is the same at every use, and returns a value. What differs between callers is never decided inside it: each caller decides it on that value. So "load the .xpi" returns the loaded add-on, and "settle the review" the settled review with its abort reasons, which the caller counts as plain or as the loop counts them. A block that would have to decide something only some callers need is no common block. The same holds for errors, and every function behaves alike: an error is always thrown, never returned, and whether to handle it, or a certain type of it, is each caller's own decision. What ends the run alike for every caller (a failure, or in a hand-back a refusal) no caller catches: it reaches the one catch in <code>main</code> ("load the .xpi" on an add-on it cannot read, a step on an answer it cannot take). A caller that decides an error differently catches only its own type and handles it, and everything else passes untouched to <code>main</code>: "approve the sca folders" throws <code>ScaFoldersRejected</code> (what is wrong, and with which folder), which ①b/②b catch and print as a bad command line, and the unpack case catches and throws on as a refusal. A result is no error and is returned: the abort reasons of "settle the review", an early-exit run that did not pass, a rejected review.</li>
+        <li><strong>The rule for a building block</strong> (2026-10-27): a common subroutine does only what is the same at every use, and returns a value. What differs between callers is never decided inside it: each caller decides it on that value. So "load the .xpi" returns the loaded add-on, and "settle the review" the settled review with its abort reasons, which the caller counts as plain or as the loop counts them. A block that would have to decide something only some callers need is no common block. The same holds for errors, and every function behaves alike: an error is always thrown, never returned, and whether to handle it, or a certain type of it, is each caller's own decision. What ends the run alike for every caller (a failure, or in a hand-back a refusal) no caller catches: it reaches the one catch in <code>main</code> ("load the .xpi" on an add-on it cannot read, a step on an answer it cannot take). A caller that decides an error differently catches only its own type and handles it, and everything else passes untouched to <code>main</code>: "approve the sca folders" throws <code>ScaFoldersRejected</code> (what is wrong, and with which folder), which ①b/②b catch and print as a bad command line, and the experiment-folder case catches and throws on as a refusal. A result is no error and is returned: the abort reasons of "settle the review", an early-exit run that did not pass, a rejected review.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -1265,7 +1284,8 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>"copy the source"</strong> copies the folder named by <code>--sca-extracted</code> 1:1 into <code>sca/</code> (<code>copySource</code>), for ①b and ②b alike, and knows nothing of the package root. The linter never extracts a source archive. In ③ the agent does, at <code>unpack</code>.</li>
+        <li><strong>"copy the source"</strong> copies the folder named by <code>--sca-extracted</code> 1:1 into <code>sca/</code> (<code>copySource</code>), for ①b and ②b alike, and knows nothing of the package root. In ③ the source arrives packed, and "extract the source archive" puts it there instead.</li>
+        <li id="extract-the-source-archive"><strong>"extract the source archive"</strong> (<code>extractSourceArchive</code>, src/addon/source-archive.js) writes ③'s source archive into a fresh <code>sca/</code>, with libarchive in WebAssembly, so it needs no system tool on any platform. It takes the nine types ATN accepts (<code>.zip</code>, <code>.tar</code>, <code>.7z</code>, <code>.tar.gz</code>, <code>.tgz</code>, <code>.tbz</code>, <code>.txz</code>, <code>.tar.bz2</code>, <code>.tar.xz</code>), told by the archive's first bytes, never by its name, which ATN mangles. Anything else is refused. Where an archive holds a single file that is itself one of those archives, that file is unpacked in its place, layer after layer (at most four), until a layer holds anything else: the readable source. An archive found beside other files stays packed, and the review reports it. Each entry is checked before its data is read: its path by the rules of the <code>.xpi</code> (<code>isSafeAddonPath</code>, inside <code>sca/</code>), no path twice (<code>namesCollide</code>), nothing encrypted, and the unpacked size under a cap (<code>SOURCE_ARCHIVE_MAX_UNPACKED_BYTES</code>). A file is written, a folder made, and a symbolic link created as stored and never followed. A platform that cannot create the link stops the extraction, with the advice to extract the archive yourself and use <code>--sca-extracted</code>. A hard link or any other entry is refused. A refusal removes <code>sca/</code> and is a failure: nothing can be reviewed.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -1289,8 +1309,8 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>The package root and the Experiment folder are given relative to the source</strong> (decided 2026-10-27), together the sca folders. Only the package root is a hint: it is optional, and "settle the package root" corrects it where it holds no <code>package.json</code>. The Experiment folder is taken as it is named (wording settled 2026-10-28). <code>main</code> makes <code>--sca-package-root</code> and <code>--sca-experiments</code> absolute on input, the package root from the current directory and the Experiment folder from <code>--sca-extracted</code> (1.3). ①b/②b hands both to "approve the sca folders", which refuses one that leaves <code>--sca-extracted</code> or is no folder, before anything is created, and returns them relative to it. Only the relative part travels on. In ③ the agent names the Experiment folder as an absolute path inside <code>EXTRACT_TO</code> (2026-10-27), and the <code>unpack</code> prompt asks for it so. The unpack case reads it first (<code>unpackedExperiments</code>): trimmed, and refused where it is blank or not an absolute path. Then it goes to the subroutine as it stands, and no package-root hint is given. Both are made relative by "approve the sca folders".</li>
-        <li><strong>"approve the sca folders" serves the command line and the agent alike</strong> (2026-10-27). It takes the source folder and the sca folders, the package root and the Experiment folder, each optional and each an absolute path. It reads nothing relative: how a folder was written is the caller's, which hands it over absolute. It follows each to the folder it really is and checks that it lies inside the source, is a folder, and, for the Experiment folder, that it is neither the source itself nor holds the package-root hint (lies inside it or is it), and that it holds at least one file, since an Experiment folder with no file in it excludes nothing from the WebExtension checks. That is whether the Experiment folder fits the package root, decided before the settle (2026-10-28): the settle moves the root only to a folder below the root given and never into the Experiment folder, so an Experiment folder that does not hold the root given cannot hold the settled one. Without a package-root hint the root starts at the source itself, and holding it means being the source, so in ③, which gives none, the one check is that the Experiment folder is not <code>sca/</code> itself. It returns the sca folders relative to the source, so they stay valid wherever the source is copied, or throws <code>ScaFoldersRejected</code>, what is wrong and with which folder, and decides nothing more. Its callers: ①b/②b, with <code>--sca-package-root</code> and <code>--sca-experiments</code> against <code>--sca-extracted</code>, before anything is created, which catch it and print what is wrong as a bad command line (stderr, exit 2, nothing created). And the hand-back's <code>unpack</code> case, with the agent's Experiment folder against <code>sca/</code>, which catches it and throws it on as a refusal (a D box), so the agent redoes the pass. Both hand the relative sca folders to "settle the package root", their one consumer, and then call "review the loaded submission", in the same run, so nothing stores them in between: the sca folders have one form on both paths, and only what the settle produces travels on. A relative folder names the same folder in <code>--sca-extracted</code> and in its copy in <code>sca/</code>, so ①b makes them relative before the copy. Not part of it: whether an Experiment folder is named exactly when the add-on declares one. ①b checks that after the load, and <code>unpack</code> asks for the folder only where the add-on declares one.</li>
+        <li><strong>The package root and the Experiment folder are given relative to the source</strong> (decided 2026-10-27), together the sca folders. Only the package root is a hint: it is optional, and "settle the package root" corrects it where it holds no <code>package.json</code>. The Experiment folder is taken as it is named (wording settled 2026-10-28). <code>main</code> makes <code>--sca-package-root</code> and <code>--sca-experiments</code> absolute on input, the package root from the current directory and the Experiment folder from <code>--sca-extracted</code> (1.3). ①b/②b hands both to "approve the sca folders", which refuses one that leaves <code>--sca-extracted</code> or is no folder, before anything is created, and returns them relative to it. Only the relative part travels on. In ③ the agent names the Experiment folder as an absolute path inside <code>EXTRACT_TO</code> (2026-10-27), and the <code>experiment-folder</code> prompt asks for it so. The experiment-folder case reads it first (<code>namedExperimentFolder</code>): trimmed, and refused where it is blank or not an absolute path. Then it goes to the subroutine as it stands, and no package-root hint is given. Both are made relative by "approve the sca folders".</li>
+        <li><strong>"approve the sca folders" serves the command line and the agent alike</strong> (2026-10-27). It takes the source folder and the sca folders, the package root and the Experiment folder, each optional and each an absolute path. It reads nothing relative: how a folder was written is the caller's, which hands it over absolute. It follows each to the folder it really is and checks that it lies inside the source, is a folder, and, for the Experiment folder, that it is neither the source itself nor holds the package-root hint (lies inside it or is it), and that it holds at least one file, since an Experiment folder with no file in it excludes nothing from the WebExtension checks. That is whether the Experiment folder fits the package root, decided before the settle (2026-10-28): the settle moves the root only to a folder below the root given and never into the Experiment folder, so an Experiment folder that does not hold the root given cannot hold the settled one. Without a package-root hint the root starts at the source itself, and holding it means being the source, so in ③, which gives none, the one check is that the Experiment folder is not <code>sca/</code> itself. It returns the sca folders relative to the source, so they stay valid wherever the source is copied, or throws <code>ScaFoldersRejected</code>, what is wrong and with which folder, and decides nothing more. Its callers: ①b/②b, with <code>--sca-package-root</code> and <code>--sca-experiments</code> against <code>--sca-extracted</code>, before anything is created, which catch it and print what is wrong as a bad command line (stderr, exit 2, nothing created). And the hand-back's <code>experiment-folder</code> case, with the agent's Experiment folder against <code>sca/</code>, which catches it and throws it on as a refusal (a D box), so the agent redoes the pass. Both hand the relative sca folders to "settle the package root", their one consumer, and then call "review the loaded submission", in the same run, so nothing stores them in between: the sca folders have one form on both paths, and only what the settle produces travels on. A relative folder names the same folder in <code>--sca-extracted</code> and in its copy in <code>sca/</code>, so ①b makes them relative before the copy. Not part of it: whether an Experiment folder is named exactly when the add-on declares one. ①b checks that after the load, and ③ enters <code>experiment-folder</code> only where the add-on declares one.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -1467,7 +1487,7 @@ flowchart LR
         <li><strong>The non-authored set</strong> is every vendored, library, minified or obfuscated file. Every content scan skips it.</li>
         <li><strong>The CDN identification</strong> asks jsDelivr, by the file's SHA-256, about a file the hash list did not know: a minified one, or a readable one large enough to be a library. A hit on a popular package joins the libraries. A hit on a package that is not popular counts only where the package name matches the file's name, and is then identified but untrusted: a minified or obfuscated one stays non-authored, a readable one is reviewed as authored code. Any other hit is discarded, as if the lookup had missed. Before it, vendor entries that could not be fetched are reconciled into the untrusted family. So this step both adds to and removes from the non-authored set, which is why the parse is ordered after it.</li>
         <li><strong>Hits are cached on disk,</strong> since a file hash names one release for good. A miss is never cached, so it is asked again on the next run. With the lookup off, every file keeps its first classification.</li>
-        <li><strong>Experiment code is the add-on's privileged code, and each artifact finds it its own way.</strong> In the <code>.xpi</code> it is traced: every file the WebExtension entry points of the shipped manifest.json reach is WebExtension code, and every other file counts as Experiment code (<code>pureWebExtensionReachable</code>, src/lib/reachability.js). In the source it is the Experiment folder, named by <code>--sca-experiments</code> or the agent's <code>unpack</code> answer and shown as <code>SCA_EXPERIMENTS</code>. The checks of WebExtension code leave it out, the dynamic-code checks (<code>eval-call</code>, <code>string-timer</code>, <code>remote-eval</code>, <code>function-constructor</code>) read only code outside the WebExtension code, and nothing judges what the Experiment does with its privileges: <code>experiment-manual-review</code> asks the reviewer to read its code in the <code>.xpi</code>.</li>
+        <li><strong>Experiment code is the add-on's privileged code, and each artifact finds it its own way.</strong> In the <code>.xpi</code> it is traced: every file the WebExtension entry points of the shipped manifest.json reach is WebExtension code, and every other file counts as Experiment code (<code>pureWebExtensionReachable</code>, src/lib/reachability.js). In the source it is the Experiment folder, named by <code>--sca-experiments</code> or the agent's <code>experiment-folder</code> answer and shown as <code>SCA_EXPERIMENTS</code>. The checks of WebExtension code leave it out, the dynamic-code checks (<code>eval-call</code>, <code>string-timer</code>, <code>remote-eval</code>, <code>function-constructor</code>) read only code outside the WebExtension code, and nothing judges what the Experiment does with its privileges: <code>experiment-manual-review</code> asks the reviewer to read its code in the <code>.xpi</code>.</li>
       </ul>
 
       <h4>4.5.8 · The derived caches</h4>
@@ -1515,7 +1535,7 @@ flowchart LR
       <ul>
         <li><strong>"populate ctx" is the one place that hard-codes how review data is made:</strong> <code>xpi/</code> and <code>sca/</code> read in place, the manifest, the schema, the Experiment classification, and the contexts and lazy review data every check reads. It claims nothing, writes nothing into the work folder, and reads none of the review-only options. Everything else is registry-driven.</li>
         <li><strong>The Experiment classification is data in ctx,</strong> as the schema is. <code>experiment-not-allowed</code> reports it in the early-exit checks, and <code>experiment-modified</code> in the normal ones. Which groups are rejected stays marked by <code>experimentVerdict</code>, the one reader of <code>--allow-experiments</code>, since no check reads a run option.</li>
-        <li><strong>ctx is populated once per run that runs checks,</strong> at the point that run reaches them: after the load and source in one-run paths, in the <code>unpack</code> case, and in the hand-back that finds the build check done. By then the source read may be the rescued copy, and the build decided.</li>
+        <li><strong>ctx is populated once per run that runs checks,</strong> at the point that run reaches them: after the load and source in one-run paths and in ③ without Experiments, in the <code>experiment-folder</code> case, and in the hand-back that finds the build check done. By then the source read may be the rescued copy, and the build decided.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -1672,7 +1692,7 @@ flowchart TB
       <ul>
         <li><strong>The review is split in three:</strong> "populate ctx" and two runs of the checks. Both runs are one function, <code>runChecks</code>, given one boolean selector, <code>early-exit</code>: true runs only the checks marked <code>review-early-exit</code>, false every check but those. Neither run is a subroutine of its own (2026-10-28): each is that one call, drawn in place with its selector in parentheses, since a wrapper per value of a parameter adds nothing. Whether the early-exit run passed (one of them reports an error, or none does) is its caller's to read on the edge.</li>
                 <li><strong>Early-exit checks always run.</strong> <code>--checks-only</code> and <code>--checks-skip</code> cannot name them, and a <code>--checks-only</code> list still runs them.</li>
-        <li><strong>One run of the early-exit checks per path, once ctx holds every artifact they read</strong> (settled 2026-10-26). <code>experiment-not-allowed</code> reads the <code>.xpi</code> and <code>lockfile-injection</code> the source, so on a source path they run after the copy or the <code>unpack</code>, and before the build check. In ③ with a source the agent extracts the archive first: a rejected Experiment costs that one extraction, which keeps the early-exit checks a single block on every path.</li>
+        <li><strong>One run of the early-exit checks per path, once ctx holds every artifact they read</strong> (settled 2026-10-26). <code>experiment-not-allowed</code> reads the <code>.xpi</code> and <code>lockfile-injection</code> the source, so on a source path they run after the copy or the extraction, and before the build check. In ③ with a source the linter extracts the archive first, and for an add-on with Experiments the agent names the Experiment folder: a rejected Experiment costs that one answer, which keeps the early-exit checks a single block on every path.</li>
         <li><strong>A passed run of the early-exit checks leaves nothing behind.</strong> It holds because early-exit checks are <code>severity: error</code>, escalate nothing and have no <code>when:</code>. The registry asserts all three.</li>
         <li><strong>No check runs twice.</strong> The normal run's selector leaves the early-exit checks out. What is computed again in the second run of a path that checks the build is ctx: <code>readableXpi</code> and the lazy review data.</li>
         <li><strong>The gain of <code>lockfile-injection</code> running before the build check</strong> is that a forged lock does not go through the <code>analyze</code> and <code>decision</code> turns. Nothing is built from a forged lock in any case: the build check's audit refuses it.</li>
@@ -1710,7 +1730,7 @@ flowchart TB
       <ul>
         <li><strong>One record, <code>.review/state.json</code>, with a <code>mode</code></strong> (decided 2026-10-26):
           <ul>
-            <li><strong>The modes:</strong> <code>unpack</code> is ③'s one step of getting the source, <code>build-check</code> is the build check from <code>analyze</code> on with its <code>roots</code>, and <code>review</code> is the review loop.</li>
+            <li><strong>The modes:</strong> <code>experiment-folder</code> is ③'s one step of naming the Experiment folder in the source the linter extracted, <code>build-check</code> is the build check from <code>analyze</code> on with its <code>roots</code>, and <code>review</code> is the review loop.</li>
             <li><strong>A step moves the record on with one atomic write</strong> (<code>writeFileAtomic</code>, a write and a rename). A crash leaves it in the old mode or in the new one, never both, so no hand-back deletes a record and no rule ranks left-over files.</li>
             <li><strong>The hand-back dispatches on the mode,</strong> not on which files exist.</li>
             <li><strong>A review start that fails is retried:</strong> the record is still in mode <code>build-check</code>, at <code>done</code>, so the next hand-back starts the review again.</li>
@@ -1724,7 +1744,7 @@ flowchart TB
             <li><strong>The permanent part</strong> holds what earlier steps settled, history that no later step touches, keeps or copies. A step adds to it once what it has settled, through one subroutine, "add to the record" (the record, the facts settled), which adds the facts and replaces none: a fact already there with the same value is left as it is, so a step done again adds nothing twice, and a different value is an error. It writes the record at once, atomic. Three steps add what they settled, and the submission's folders are added where each is created (below):
               <ul>
                 <li><strong>the entry point, what the run was given:</strong> the submission, the kind and the flags, added by every entry point right after "load the .xpi", a box of its own in each path (①a/②a, ①b/②b, ③ in both branches, and the restart into its new work folder with the recorded flags). The load itself stays ignorant of flags.</li>
-                <li><strong>"review the loaded submission", what the early-exit run worked out:</strong> the Experiment verdict, the early-exit result and <code>xpi-reviewable</code>, added after the early-exit run, before it reports or issues anything. A review started again in the same folder (the unpack case after ③, the build check's done case) finds them there and adds nothing twice.</li>
+                <li><strong>"review the loaded submission", what the early-exit run worked out:</strong> the Experiment verdict, the early-exit result and <code>xpi-reviewable</code>, added after the early-exit run, before it reports or issues anything. A review started again in the same folder (the experiment-folder case after ③, the build check's done case) finds them there and adds nothing twice.</li>
                 <li><strong>whatever ends the review, its result, before "close the review":</strong> after a rejected early-exit run in LLM mode, "review the loaded submission" adds the review as the early-exit checks produced it, with no verdicts; at the loop's end, "advance the review" adds the review as the checks produced it and the verdicts so far. Only one of them happens for a record. "close the review" then reads only the permanent part. The fact (<code>review</code>) holds, after a rejected early-exit run, the review as the early-exit checks produced it: <code>report</code> (the findings, <code>meta</code> and <code>sca</code>), <code>manual</code> (the to-dos) and <code>preSweep</code> (the sweeps), each once, beside the findings, and <code>meta</code> only the facts about the run. At the loop's end it holds mode review's body without <code>mode</code>: that review as the loop holds it, the verdicts so far (<code>answers</code>, <code>values</code>) and what the close reads of the loop (<code>run</code>, <code>issued</code>, <code>products</code>, <code>paths</code>, <code>roots</code>, <code>vulnerabilities</code>). It holds no rendered report.</li>
                 <li><strong>the build check, when it is done:</strong> the build check's results, everything of it the review and the checks read (the build decision, the build result and the vulnerability counts among them), added before the review starts. A review start that fails is retried from <code>done</code> and finds them there.</li>
               </ul>
@@ -1732,7 +1752,7 @@ flowchart TB
             <li><strong>The submission's folders are permanent facts, named by the record, never inferred</strong> (2026-10-28). Which folders the submission is made of is not guessed from the kind, the mode or the roots: each folder is a fact of its own, for example <code>folders: { xpi, sca, rescued }</code>, added once by the step that creates it, so adding one never replaces another:
               <ul>
                 <li><code>xpi/</code>: the entry point, with what was given, right after "load the .xpi" (every path, the restart included);</li>
-                <li><code>sca/</code>: ①b/②b's entry point right after "copy the source", and ③'s unpack case once "approve the sca folders" has taken the agent's <code>sca/</code>;</li>
+                <li><code>sca/</code>: ①b/②b's entry point right after "copy the source", and ③ once the source is extracted, at once without Experiments, or in the experiment-folder case once "approve the sca folders" has taken the agent's Experiment folder;</li>
                 <li><code>rescued/</code>: the build check, right after it creates the rescued copy, in the hand-back that audits the lock and finds it rescuable, on the way into <code>rescue</code>.</li>
               </ul>
               The hand-back's folder check reads this set and nothing else. Which tree the review reads, <code>sca/</code> or <code>rescued/</code>, is the build check's own decision and part of its results: it decides what the review reads, not which folders are checked. Folders the agent works in, such as <code>build/</code>, are not the submission's and are not named.</li>
@@ -1751,7 +1771,7 @@ flowchart TB
           <div>
             <pre class="mermaid">
 flowchart TB
-  T(["start a mode<br/>(the record, the mode,<br/>its own body, its first step)"]) --> M1["the current part replaced<br/>the mode: unpack, build-check, review or downgrade<br/>its own body, at its first step or phase"]
+  T(["start a mode<br/>(the record, the mode,<br/>its own body, its first step)"]) --> M1["the current part replaced<br/>the mode: experiment-folder, build-check, review or downgrade<br/>its own body, at its first step or phase"]
   M1 --> MD(["returns the record<br/>nothing written<br/>the permanent part not touched"])
   classDef xpi fill:#2b6cb0,stroke:#1a4a80,color:#ffffff;
   classDef stop fill:#c53030,stroke:#822727,color:#ffffff;
@@ -1763,7 +1783,7 @@ flowchart TB
         </div>
       </div>
       <ul>
-        <li><strong>"start a mode" starts every mode</strong> (2026-10-27, reshaped 2026-10-28): unpack, build-check at <code>analyze</code>, review, and downgrade. It takes the record, the mode, the mode's own body and its first step or phase, and replaces the record's current part with them. It does not touch the permanent part (see "The record has a permanent part" above), and returns the record, writing nothing: "issue a hand-back prompt" writes it. What differs stays with the caller: it builds the body (the build slots empty for build-check, the review, refs, the files named in meta and <code>run</code> for review) and picks the first step or phase, as <code>nextPhase</code> does for the review. Moving on within a mode ("the record at the next step") is no start, and stays with each step handler. With a permanent part nothing is passed on from one mode to the next: it is there.</li>
+        <li><strong>"start a mode" starts every mode</strong> (2026-10-27, reshaped 2026-10-28): experiment-folder, build-check at <code>analyze</code>, review, and downgrade. It takes the record, the mode, the mode's own body and its first step or phase, and replaces the record's current part with them. It does not touch the permanent part (see "The record has a permanent part" above), and returns the record, writing nothing: "issue a hand-back prompt" writes it. What differs stays with the caller: it builds the body (the build slots empty for build-check, the review, refs, the files named in meta and <code>run</code> for review) and picks the first step or phase, as <code>nextPhase</code> does for the review. Moving on within a mode ("the record at the next step") is no start, and stays with each step handler. With a permanent part nothing is passed on from one mode to the next: it is there.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -1821,7 +1841,7 @@ flowchart TB
       <ul>
         <li><strong>Two subroutines issue every prompt</strong> (2026-10-27), chosen by what they do rather than by pattern matching, so the same act is coded once and cannot drift:
           <ul>
-            <li><strong>"issue a hand-back prompt"</strong> takes the record, the entries the agent answers and the prompt's lines. It writes <code>state.json</code> atomically, then <code>answers.json</code>, then prints the prompt to stdout, so a prompt never names a file that is not written yet. It issues unpack, analyze and every later build check step. Called by "advance the review", it issues the first phase and every next phase. Called by "close the review", it issues the restart prompt (the downgrade question).</li>
+            <li><strong>"issue a hand-back prompt"</strong> takes the record, the entries the agent answers and the prompt's lines. It writes <code>state.json</code> atomically, then <code>answers.json</code>, then prints the prompt to stdout, so a prompt never names a file that is not written yet. It issues experiment-folder, analyze and every later build check step. Called by "advance the review", it issues the first phase and every next phase. Called by "close the review", it issues the restart prompt (the downgrade question).</li>
             <li><strong>"issue the closing prompt"</strong> takes the settled review. It writes <code>review.md</code> and <code>state.json</code>, then prints the verdicts applied, where any were, and the closing prompt. Two callers: "close the review", at every close where it does not offer the restart instead (the loop's close, a first run whose review closes at once, and an LLM run its early-exit checks rejected), and the downgrade case's "keep", which settles the review from the permanent part and calls it directly, so the restart is offered once.</li>
           </ul>
           What differs stays with the caller: it builds the record ("start a mode", or "the record at the next step" within one) and the lines, writes <code>review.md</code> first where a hand-back prompt links it ("advance the review" before every phase's prompt, whose <code>ask</code> phase's Review Details link it, and "close the review" before the restart prompt), and hands the exit code to exit handling after the call. Both print with <code>writeToStdout</code> (settled 2026-10-27): a prompt is a whole document, which is what it prints. Every run that prints a prompt refuses JSON (<code>src/cli.js</code>), so a prompt always prints.</li>
@@ -1878,7 +1898,7 @@ flowchart TB
       <ul>
         <li><strong>"review the loaded submission" is one subroutine for an <code>.xpi</code> review and a source review</strong> (2026-10-28). It takes the work folder, loaded, and its source settled in <code>sca/</code> where it has one, the flags (as given, or as recorded), plain or LLM, and <code>downgradedFrom</code> where it restarts a source review (which adds the finding telling the developer to submit just the <code>.xpi</code>). It populates ctx and runs the early-exit checks. Did they not pass, it reports the review (plain) or adds the review to the record and calls "close the review" (LLM). Did they pass, a source review in LLM mode starts mode build-check at <code>analyze</code> and issues its prompt, since the normal checks read what the build check produces. Every other review runs the normal checks, then reports the review (plain) or starts the review loop (LLM). It returns what it issued with the exit code, 0 or 1 by the review's errors, 0 after the analyze prompt, and the caller hands that to exit handling.
           <ul>
-            <li><strong>Its callers set the review up:</strong> each creates its own work folder and loads the <code>.xpi</code> ("load the .xpi"), and a source review's caller also puts the source into <code>sca/</code> and settles the package root ("settle the package root" with the relative sca folders), ①b/②b after the copy, the hand-back's <code>unpack</code> case after "approve the sca folders". So every entry point stays responsible for its own setup, and the settle is part of it, as the load is. Its callers: ①a/②a, ①b/②b, ③ given an <code>.xpi</code> alone, the <code>unpack</code> case (which ③ with a source passes through), and the restart as an XPI review.</li>
+            <li><strong>Its callers set the review up:</strong> each creates its own work folder and loads the <code>.xpi</code> ("load the .xpi"), and a source review's caller also puts the source into <code>sca/</code> and settles the package root ("settle the package root" with the relative sca folders), ①b/②b after the copy, ③ after the extraction, at once or in the hand-back's <code>experiment-folder</code> case after "approve the sca folders". So every entry point stays responsible for its own setup, and the settle is part of it, as the load is. Its callers: ①a/②a, ①b/②b, ③ given an <code>.xpi</code> alone, ③ with a source and no Experiments, the <code>experiment-folder</code> case (which ③ with a source and Experiments passes through), and the restart as an XPI review.</li>
             <li><strong>Why one:</strong> two subroutines, one per kind, would run the same steps up to "passed", populate ctx, the early-exit run and its "did not pass" branch, each drawn and written twice, which reopens the drift the subroutines exist to stop. Its one decision of its own, "a source review in LLM mode?", is the same on the same values for every caller: the <code>.xpi</code> callers simply never take the build check's branch. A wrapper per kind would only settle and call, which the source callers already do as their setup.</li>
             <li><strong>The mode is derived once,</strong> in <code>populateCtx</code>, from whether there are source folders.</li>
             <li><strong>Not covered:</strong> the build-check case once the build check is done, which runs the normal checks alone, since the early-exit checks ran in an earlier run. Section 7 draws the inside of the subroutine once, in ①a's graph.</li>
@@ -2056,7 +2076,7 @@ flowchart TB
           <tr><th>Name</th><th><code>workPaths</code> key</th><th>What it is</th><th>Written by, and when</th></tr>
           <tr><td><code>xpi/</code></td><td><code>xpi</code></td><td>The shipped add-on, the one copy every reader reads: a packed <code>.xpi</code> extracted, an unpacked folder copied. A folder of the submission, named by the record.</td><td>The linter, in "load the .xpi", in every first run and in the restart.</td></tr>
           <tr><td><code>.review/state.json</code></td><td><code>state</code></td><td>The record (section 4.8), with its <code>digest</code>, left read-only after every write.</td><td>The linter: created empty by "load the .xpi", then rewritten whole and atomic (a write and a rename) by every step that writes the record. <code>.review/</code> is created with it.</td></tr>
-          <tr><td><code>sca/</code></td><td><code>sca</code></td><td>The source, all of it, the tree a source review reads unless the rescued copy replaces it. An input, never written by the review. A folder of the submission.</td><td>①b/②b: the linter, in "copy the source", 1:1 from <code>--sca-extracted</code> with links copied as written, after the Experiment folder check. ③: the agent, at <code>unpack</code>, extracting the source archive into it (<code>EXTRACT_TO</code>).</td></tr>
+          <tr><td><code>sca/</code></td><td><code>sca</code></td><td>The source, all of it, the tree a source review reads unless the rescued copy replaces it. An input, never written by the review. A folder of the submission.</td><td>①b/②b: the linter, in "copy the source", 1:1 from <code>--sca-extracted</code> with links copied as written, after the Experiment folder check. ③: the linter, in "extract the source archive", before anything is asked (<code>EXTRACT_TO</code>).</td></tr>
           <tr><td><code>.review/answers.json</code></td><td><code>answers</code></td><td>The file the agent answers in, the entries the step or phase asks, none where it asks none.</td><td>The linter, in "issue a hand-back prompt", after the record, for every step and phase. The agent fills it in. Deleted when the build check reaches <code>done</code>, after the record is written (<code>markDone</code>), so the review that starts there writes its own.</td></tr>
           <tr><td><code>build.md</code></td><td><code>build</code></td><td>The build report: what building the add-on takes.</td><td>The agent, at <code>analyze</code>. A hand-back of <code>analyze</code> without it is refused.</td></tr>
           <tr><td><code>build-issues.md</code></td><td><code>buildIssues</code></td><td>What the build reaches for outside the declared dependencies, as the agent handed it back, or a line saying there is nothing.</td><td>The linter, in the hand-back of <code>analyze</code>.</td></tr>
@@ -2129,7 +2149,7 @@ flowchart TB
         <li><strong>Prose is re-wrapped.</strong> A paragraph's authored line breaks are collapsed and the paragraph wrapped to the report width. A paragraph whose every line opens with an all-caps name and a space (<code>isValueBlock</code>) is printed as authored, indented two spaces.</li>
         <li><strong>A prompt that still names a value is refused.</strong> After rendering, any <code>{{name}}</code> left (letters only) throws, naming the phase and the slots (<code>assertFilled</code>). So a block placeholder put inside a sentence fails when the prompt is printed, never in silence.</li>
         <li><strong>Some numbers are filled when the registry loads.</strong> The manual review choices' <code>{{maxNote}}</code> (<code>manualReviewChoices</code>), the build check steps' <code>{{maxNote}}</code> and <code>{{maxHint}}</code>, and the build check intro's <code>{{proseStyle}}</code> (<code>llmScaReviewPrompt</code>, src/checks/registry.js). The analyze step's <code>{{issueShape}}</code> is a block filled where the prompt is printed, with <code>resultShape</code> of SCA_SOURCE (<code>scaPromptLines</code>, src/report/format.js).</li>
-        <li><strong>The build check's prompts</strong> (<code>scaPromptLines</code>) print: the heading <code>SCA Review Prompt</code>, the <code>llm-sca-review-prompt.intro</code> on the run's first prompt only, the Submission block on <code>unpack</code> (<code>XPI</code>, <code>SOURCE_ARCHIVE</code>, <code>FOLDER</code>, <code>EXTRACT_TO</code>), the Review file block (<code>ANSWERS</code>) on every step after <code>unpack</code> and on <code>unpack</code> where it asks for the Experiment folder, the Build block of the folders that step names, then the step list <code>llm-sca-review-prompt.&lt;step&gt;</code>, filtered on its facts <code>find-experiment</code>, <code>build-overridden</code> and <code>build-vulnerable</code> and numbered. Its blocks are <code>{{flags}}</code> (the hand-back command), <code>{{buildDetails}}</code> (on <code>override-unsafe</code> and <code>decision</code>) and <code>{{copy}}</code> (on <code>rescue</code>). It has no preamble, frame or hand-back step: each list carries <code>{{flags}}</code> itself. The entries its answers file holds are worded by <code>build-override</code>, <code>build-decision</code>, <code>build-output</code> and <code>rescue-output</code>.</li>
+        <li><strong>The build check's prompts</strong> (<code>scaPromptLines</code>) print: the heading <code>SCA Review Prompt</code>, the <code>llm-sca-review-prompt.intro</code> on the run's first prompt only, the Submission block on <code>experiment-folder</code> (<code>XPI</code>, <code>SOURCE_ARCHIVE</code>, <code>FOLDER</code>, <code>EXTRACT_TO</code>), the Review file block (<code>ANSWERS</code>) on every step, the Build block of the folders that step names, then the step list <code>llm-sca-review-prompt.&lt;step&gt;</code>, filtered on its facts <code>find-experiment</code>, <code>build-overridden</code> and <code>build-vulnerable</code> and numbered. Its blocks are <code>{{flags}}</code> (the hand-back command), <code>{{buildDetails}}</code> (on <code>override-unsafe</code> and <code>decision</code>) and <code>{{copy}}</code> (on <code>rescue</code>). It has no preamble, frame or hand-back step: each list carries <code>{{flags}}</code> itself. The entries its answers file holds are worded by <code>build-override</code>, <code>build-decision</code>, <code>build-output</code> and <code>rescue-output</code>.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -2417,12 +2437,12 @@ flowchart TB
         <tr><th>row</th><th>link text or value</th><th>what it names</th><th>present where</th><th>written by</th></tr>
         <tr><td><code>XPI_FILE</code></td><td>the submission's file name</td><td>The submitted <code>.xpi</code>, linked under the name it was submitted by (<code>meta.xpiFile</code>, the basename of the given path).</td><td>every block</td><td>the submitter, given to the linter</td></tr>
         <tr><td><code>XPI_ROOT</code></td><td>extracted addon</td><td>The shipped package unpacked in the work folder's <code>xpi/</code>, ready to read.</td><td>every block of the review, not the build check's</td><td>the linter ("load the .xpi")</td></tr>
-        <tr><td><code>SCA_SOURCE</code></td><td>source archive</td><td>The copy of the submitted source the review works on, in <code>sca/</code>.</td><td>a source review</td><td>the linter's copy (①b, ②b), or the agent's extraction at <code>unpack</code> (③)</td></tr>
+        <tr><td><code>SCA_SOURCE</code></td><td>source archive</td><td>The copy of the submitted source the review works on, in <code>sca/</code>.</td><td>a source review</td><td>the linter's copy (①b, ②b), or the linter's extraction of the source archive (③)</td></tr>
         <tr><td><code>SCA_RESCUED</code></td><td>rescued source (reduced/fixed dependencies)</td><td>The rescued copy in <code>rescued/</code> the review read instead, which every <code>[SCA]</code> path is then relative to.</td><td>where the folders' <code>used</code> differs from <code>source</code>: a rescue came out clean</td><td>the linter copies <code>sca/</code>, the agent rescues it</td></tr>
         <tr><td><code>SCA_BUILD_REPORT</code></td><td>build.md</td><td>What building the add-on takes, with its build attempt.</td><td>the build check's block, and the review's where the build check judged the build (<code>build.safety</code>) and <code>build.md</code> exists</td><td>the build check's agent, at <code>analyze</code></td></tr>
         <tr><td><code>SCA_BUILD_SAFETY_ASSESSMENT</code></td><td><code>safe</code> or <code>unsafe</code></td><td>The verdict read off the build's safety issues: <code>safe</code> where there are none.</td><td>where the build check judged the build</td><td>the linter</td></tr>
         <tr><td><code>SCA_BUILD_SAFETY_ISSUES</code></td><td>build-issues.md</td><td>What the build reaches for outside the declared dependencies, one line per issue.</td><td>the build check's block, and the review's where that file exists beside <code>build.md</code></td><td>the linter, from the issues the agent handed back</td></tr>
-        <tr><td><code>SCA_EXPERIMENTS</code></td><td>experiment source</td><td>The Experiment implementation folder inside the source, excluded from the WebExtension checks.</td><td>where the source folders hold one</td><td>part of the submitted source, named at <code>unpack</code> or given with the source</td></tr>
+        <tr><td><code>SCA_EXPERIMENTS</code></td><td>experiment source</td><td>The Experiment implementation folder inside the source, excluded from the WebExtension checks.</td><td>where the source folders hold one</td><td>part of the submitted source, named at <code>experiment-folder</code> or given with the source</td></tr>
         <tr><td><code>SCA_BUILD</code></td><td>build copy</td><td>The copy of the source in <code>build/</code> the agent's build ran in.</td><td>where the agent built or its build failed</td><td>the linter fills it, the agent builds in it</td></tr>
         <tr><td><code>SCA_VULNERABILITIES</code></td><td><code>n moderate, n high, n critical</code></td><td>The submitted lock's vulnerable packages.</td><td>where the build check counted them, else where this review's own audit did (once a dependency-vulnerability check read the lock)</td><td>the linter</td></tr>
         <tr><td><code>LLM_BUILD_OUTPUT</code></td><td>its own basename</td><td>What the agent's build produced, a file or a folder in <code>build/</code>.</td><td>where the agent named an output</td><td>the agent's build</td></tr>
@@ -2458,7 +2478,7 @@ flowchart TB
       </p>
         <ul>
           <li><strong>whether the files this run wrote stay:</strong> they stay when the run did its job, a refusal included, so the agent can redo the pass in the same folder. After a failure the files and folders this run created are removed (<code>releaseClaims</code>, <code>src/util/claims.js</code>), and anything the run found there is left alone.</li>
-          <li><strong>the exit code,</strong> written on each green circle: 0 after a hand-back prompt, whatever the review's errors: the unpack and analyze prompts, every step's and phase's prompt, the first prompt and the downgrade question. 0 or 1 after a run of checks that prints a plain report or issues the close, by whether the review has errors. 0 or 1 at a close reached in a loop pass or after "keep", by the review's errors. 2 after a refusal or a failure.</li>
+          <li><strong>the exit code,</strong> written on each green circle: 0 after a hand-back prompt, whatever the review's errors: the experiment-folder and analyze prompts, every step's and phase's prompt, the first prompt and the downgrade question. 0 or 1 after a run of checks that prints a plain report or issues the close, by whether the review has errors. 0 or 1 at a close reached in a loop pass or after "keep", by the review's errors. 2 after a refusal or a failure.</li>
         </ul>
       <p>
         A red "continue after hand-back" follows where the agent carries on. It is not an action
@@ -2549,7 +2569,7 @@ flowchart TB
       </div>
       <ul>
         <li><strong>One catch, in <code>main</code>, around every run</strong> (2026-10-28): a first run (①, ②, ③) and a hand-back alike, since <code>main</code> dispatches <code>--llm-handback</code> to the hand-back itself. It decides on the error, not on the run: a <code>HandbackRefused</code> is a refusal, anything else a failure, each printed by the writer and handed to exit handling with its own values. A first run reads no answer of the agent's, so it never throws a refusal and never takes that branch, which is the same decision on the same value for every run, as with "hand over the review"'s plain branch in the hand-back. Two catches, one per use case, would draw the failure branch twice.</li>
-        <li><strong>A refusal is drawn in place, as a D box</strong> (2026-10-28), only in the hand-back, since only a hand-back reads the agent's answers. Every case that cannot take an answer (unpack's <code>sca/</code> and its Experiment folder, a build check step, a pass of the review loop) throws <code>HandbackRefused</code> where it reads the answer, and the run's one catch answers it through the writer ("print the message", stdout, the <code>refused</code> text with its problem filled in, telling the agent what is wrong and to redo that pass, with nothing written), then exit handling with the files kept and exit 2, and the next run continues in the same mode and step, the pass redone. The record is unchanged, so nothing else is needed.</li>
+        <li><strong>A refusal is drawn in place, as a D box</strong> (2026-10-28), only in the hand-back, since only a hand-back reads the agent's answers. Every case that cannot take an answer (experiment-folder's <code>sca/</code> and its Experiment folder, a build check step, a pass of the review loop) throws <code>HandbackRefused</code> where it reads the answer, and the run's one catch answers it through the writer ("print the message", stdout, the <code>refused</code> text with its problem filled in, telling the agent what is wrong and to redo that pass, with nothing written), then exit handling with the files kept and exit 2, and the next run continues in the same mode and step, the pass redone. The record is unchanged, so nothing else is needed.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -2786,7 +2806,10 @@ flowchart TB
   E3(["③ folder: one .xpi, maybe a source"]) --> A0{{"what is in the folder?<br/>scaSubmission, names only, in main"}}
   A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   FNxe -. "a hand-back prompt issued" .-> FNxr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
-  A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> U0[["start a mode<br/>unpack"]] --> Uiw[["issue a hand-back prompt<br/>unpack"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode unpack")):::stop
+  A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> X0[["extract the source archive<br/>into sca/"]] --> XE{{"does the add-on<br/>declare Experiments?"}}
+  XE -- yes --> U0[["start a mode<br/>experiment-folder"]] --> Uiw[["issue a hand-back prompt<br/>experiment-folder"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode experiment-folder")):::stop
+  XE -- no --> XA[["add to the record<br/>the folder sca/"]] --> XS[["settle the package root<br/>no sca folders"]] --> XR[["review the loaded submission<br/>LLM"]] --> XRe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
+  XRe -. "a hand-back prompt issued" .-> XRr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph FM ["main"]
     A0
   end
@@ -2802,11 +2825,21 @@ flowchart TB
   subgraph FC ["autoReview"]
     L4
     AG4
+    X0
+    XE
     U0
     Uiw
     Ure
     Ur
+    XA
+    XS
+    subgraph DA3 ["A"]
+      XR
+      XRe
+      XRr
+    end
   end
+  style DA3 fill:#fde68a,stroke:#a16207,stroke-width:2.5px,color:#1d1d1b
   style FM fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
   style FX fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
   style FC fill:none,stroke:#8a3b12,stroke-width:1.5px,stroke-dasharray:6 4
@@ -2816,8 +2849,8 @@ flowchart TB
   r1SLt -- "it settles" --> r1SLa["the pass accepted<br/>its answers stored"] --> r1SQ[["advance the review<br/>the settled review"]] --> r1SQe(("exit<br/>handling<br/>exit 0, the close 0 or 1")):::final
   r1SQe -. "a hand-back prompt issued" .-> r1SQr(("continue after<br/>hand-back<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   class r1SLa,r1SLt,r1SQ back
-  u1HX["read the Experiment answer, where asked<br/>trimmed, unpackedExperiments"]
-  u1HX -- "absolute, or not asked" --> u1HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
+  u1HX["read the Experiment answer<br/>trimmed, namedExperimentFolder"]
+  u1HX -- "absolute" --> u1HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
   u1HK -- "the sca folders, relative" --> u1HKa[["add to the record<br/>the folder sca/"]] --> u1HST[["settle the package root<br/>the sca folders, relative"]] --> u1HU[["review the loaded submission<br/>LLM"]] --> u1HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   u1HUe -. "a hand-back prompt issued" .-> u1HUr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph u1DB2 ["A"]
@@ -2863,8 +2896,9 @@ flowchart TB
   class r3SLa,r3SLt,r3SQ back
   FNxr -. "hand-back · mode review<br/>its answers well formed" .-> r1SLt
   r1SQr -. "hand-back · mode review<br/>its answers well formed" .-> r1SLt
-  Ur -. "hand-back · mode unpack" .-> u1HX
+  Ur -. "hand-back · mode experiment-folder" .-> u1HX
   u1HUr -. "hand-back · mode build-check<br/>the answer applied" .-> b1SN
+  XRr -. "hand-back · mode build-check<br/>the answer applied" .-> b1SN
   b1SPr -. "hand-back · mode build-check<br/>the answer applied" .-> b1SN
   b1HNr -. "hand-back · mode review<br/>its answers well formed" .-> r2SLt
   r2SQr -. "hand-back · mode review<br/>its answers well formed" .-> r2SLt
@@ -2878,6 +2912,12 @@ flowchart TB
   click FNxr href "#hand-back"
   click L4 href "#load-the-xpi"
   click AG4 href "#add-to-the-record"
+  click X0 href "#extract-the-source-archive"
+  click XA href "#add-to-the-record"
+  click XS href "#settle-the-package-root"
+  click XR href "#review-the-loaded-submission"
+  click XRe href "#exit-handling-the-files-the-code"
+  click XRr href "#hand-back"
   click U0 href "#start-a-mode"
   click Uiw href "#issue-a-hand-back-prompt-and-issue-the-closing-prompt"
   click Ure href "#exit-handling-the-files-the-code"
@@ -2886,7 +2926,7 @@ flowchart TB
   click r1SQ href "#advance-the-review"
   click r1SQe href "#exit-handling-the-files-the-code"
   click r1SQr href "#hand-back"
-  click u1HX href "#unpack-step"
+  click u1HX href "#experiment-folder-step"
   click u1HK href "#approve-the-sca-folders"
   click u1HKa href "#add-to-the-record"
   click u1HST href "#settle-the-package-root"

@@ -1,10 +1,10 @@
 // ISSUING A PROMPT: the two acts every prompt of a review goes out by, each coded once.
 //
-// "issue a hand-back prompt" writes the record, then the answers file the agent fills in,
-// then prints the prompt, so a prompt never names a file that is not written yet. It issues
-// unpack, analyze and every later build check step, every phase of the review loop and the
-// restart prompt. "issue the closing prompt" writes review.md and the record at the close,
-// then prints the verdicts applied and the closing prompt.
+// "issue a hand-back prompt" writes the record, then the answers file the agent fills in, then
+// prints the prompt, so a prompt never names a file that is not written yet. It issues
+// experiment-folder, analyze and every later build check step, every phase of the review loop
+// and the restart prompt. "issue the closing prompt" writes review.md and the record at the
+// close, then prints the verdicts applied and the closing prompt.
 //
 // Both print with writeToStdout: a prompt is a whole document. What differs stays with the
 // caller: it builds the record and the lines, writes review.md first where a hand-back prompt

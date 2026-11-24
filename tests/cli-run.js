@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 import AdmZip from "adm-zip";
 import {
   addonOutsideRepo,
@@ -216,13 +217,81 @@ export function handBackUntil(work, stop) {
 }
 
 /** A submission folder: one built add-on, one source archive, and the usual clutter. The
- *  add-on is a real one, because the hand-back that finishes the build check reviews it. */
-export function submissionFolder(name = "addon.xpi") {
+ *  add-on is a real one, because the hand-back that finishes the build check reviews it, its
+ *  manifest.json with `manifest` merged in. The source archive packs `source` (NO_LOCK_SOURCE
+ *  unless given), with a file in `experimentsFolder` where given, since --llm-auto-review has
+ *  the linter extract it. */
+export function submissionFolder(
+  name = "addon.xpi",
+  { source = NO_LOCK_SOURCE, experimentsFolder, manifest = {} } = {}
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-submission-"));
-  packAddon(path.join(dir, name));
-  fs.writeFileSync(path.join(dir, "src-4.3.12.tar_ABC.gz"), "");
+  packAddon(path.join(dir, name), manifest);
+  // The source as ATN stores an upload, renamed: a real .tar.gz the linter extracts by its
+  // content.
+  packSource(
+    path.join(dir, "src-4.3.12.tar_ABC.gz"),
+    source,
+    experimentsFolder
+  );
   fs.writeFileSync(path.join(dir, "README.txt"), "");
   return dir;
+}
+
+/** Pack `source` as a .tar.gz at `file`, as a developer submits it, with a file in
+ *  `experimentsFolder` where given, since an Experiment folder that holds none is refused. */
+export function packSource(file, source, experimentsFolder) {
+  const files = treeFiles(source);
+  if (experimentsFolder) {
+    files.set(`${experimentsFolder}/api.js`, Buffer.from("1;\n"));
+  }
+  fs.writeFileSync(file, zlib.gzipSync(tarOf(files)));
+}
+
+/** Every regular file under `dir`, by its posix path relative to it, with its bytes. */
+function treeFiles(dir) {
+  const files = new Map();
+  const walk = (at, rel) => {
+    for (const e of fs.readdirSync(at, { withFileTypes: true })) {
+      const key = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        walk(path.join(at, e.name), key);
+      } else if (e.isFile()) {
+        files.set(key, fs.readFileSync(path.join(at, e.name)));
+      }
+    }
+  };
+  walk(dir, "");
+  return files;
+}
+
+/** A POSIX (ustar) tar of `files`, each a regular file at its key: what `tar cf` writes. */
+function tarOf(files) {
+  const blocks = [];
+  for (const [key, data] of files) {
+    const header = Buffer.alloc(512);
+    const field = (at, length, text) => header.write(text, at, length, "utf8");
+    const octal = (at, length, n) =>
+      field(at, length, `${n.toString(8).padStart(length - 1, "0")}\0`);
+    field(0, 100, key);
+    octal(100, 8, 0o644);
+    octal(108, 8, 0);
+    octal(116, 8, 0);
+    octal(124, 12, data.length);
+    octal(136, 12, 0);
+    header.fill(" ", 148, 156);
+    field(156, 1, "0");
+    field(257, 6, "ustar\0");
+    field(263, 2, "00");
+    let sum = 0;
+    for (const b of header) {
+      sum += b;
+    }
+    field(148, 8, `${sum.toString(8).padStart(6, "0")}\0 `);
+    blocks.push(header, data, Buffer.alloc((512 - (data.length % 512)) % 512));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.concat(blocks);
 }
 
 /** Pack the clean fixture as an .xpi at `file`, with `manifest` merged into its own. */
@@ -283,8 +352,7 @@ export function commandOf(stdout) {
 }
 
 /** The work folder a build check prompt names: the one its ANSWERS file is in, in
- *  `.review/`, or on the `unpack` prompt, which hands out no ANSWERS, the one EXTRACT_TO is
- *  `sca/` of. */
+ *  `.review/`, or else the one EXTRACT_TO is `sca/` of. */
 export const workOf = (stdout) => {
   const answers = headerValue(stdout, "ANSWERS");
   return answers
@@ -303,36 +371,33 @@ export const readJson = (work, name) =>
   );
 
 /**
- * Do what the `unpack` prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO (with an Experiment folder `experimentsFolder` in it, where given), and run the
- * hand-back it prints, which derives the root and prints the `analyze` prompt.
+ * Do what the `experiment-folder` prompt asks, the way its reader would: name the Experiment
+ * folder `experimentsFolder` in the source the linter extracted into EXTRACT_TO, and run the
+ * hand-back it prints, which derives the root and prints the `analyze` prompt. An add-on
+ * without Experiments is reviewed at once, so its --llm-auto-review run already printed
+ * `analyze`: there is nothing to do, and that run stands as the result.
  * @param {string} stdout  The --llm-auto-review run's output.
- * @param {{experimentsFolder?: string, typed?: (work: string) => string, source?: string}}
- *   [opts]  As handBackRoots.
- * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
+ * @param {{experimentsFolder?: string, typed?: (work: string) => string}} [opts]  As
+ *   handBackRoots.
+ * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run, or the
+ *   --llm-auto-review run's own output where no Experiment folder was asked.
  */
-export function unpackSource(
+export function nameExperimentFolder(
   stdout,
-  { experimentsFolder, typed, source = NO_LOCK_SOURCE } = {}
+  { experimentsFolder, typed } = {}
 ) {
   const root = headerValue(stdout, "EXTRACT_TO");
-  fs.cpSync(source, root, { recursive: true });
-  if (experimentsFolder) {
-    // A file in it, since an Experiment folder that holds none is refused.
-    fs.mkdirSync(path.join(root, experimentsFolder), { recursive: true });
-    fs.writeFileSync(path.join(root, experimentsFolder, "api.js"), "1;\n");
+  if (root === undefined) {
+    return { code: 0, stdout, stderr: "" };
   }
-  // The Experiment folder is named in the unpack review file, where the prompt asks for it.
   const answers = headerValue(stdout, "ANSWERS");
-  if (answers) {
-    const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
-    doc.entries = doc.entries.map((e) =>
-      e.index === "SCA_EXPERIMENTS"
-        ? { ...e, answer: path.join(root, experimentsFolder) }
-        : e
-    );
-    fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
-  }
+  const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+  doc.entries = doc.entries.map((e) =>
+    e.index === "SCA_EXPERIMENTS"
+      ? { ...e, answer: path.join(root, experimentsFolder) }
+      : e
+  );
+  fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   const work = workOf(stdout);
   return typed
     ? run(["--llm-handback", typed(work)])
@@ -395,21 +460,21 @@ export function answerDecision(stdout, decision = "Build it myself") {
 }
 
 /**
- * Do what the first prompts ask, the way their reader would: extract the source into
- * EXTRACT_TO, name the Experiment folder where `unpack` asks for it, and run the hand-back the
- * `unpack` prompt prints, then write the build report to SCA_BUILD_REPORT, answer ANSWERS (the
+ * Do what the first prompts ask, the way their reader would: name the Experiment folder where
+ * `experiment-folder` asks for it, and run the hand-back its prompt prints, then write the
+ * build report to SCA_BUILD_REPORT, answer ANSWERS (the
  * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
  * override-unsafe prompt, answer it (the verdict overridden unless `override` says otherwise)
  * and run its hand-back. Where that prints the decision prompt, answer it too (the agent let
- * build) and run its hand-back. The source is NO_LOCK_SOURCE unless `source` names another:
- * with no lock, the build check is done at `analyze` and the review starts there.
+ * build) and run its hand-back. The linter extracted the source the submission folder packs
+ * (submissionFolder): with no lock, the build check is done at `analyze` and the review
+ * starts there.
  * @param {string} stdout  The --llm-auto-review run's output.
  * @param {{experimentsFolder?: string, typed?: (work: string) => string, safety?: string,
- *   override?: string, managers?: string, source?: string}} [opts]  The Experiment folder to
- *   answer, relative to the root, for an add-on that declares Experiments, how the work folder
- *   is typed, where not as the prompt prints it, the agent's build judgement, the reviewer's
- *   answer to the override question, their answer to the decision question, and the source
- *   extracted.
+ *   override?: string, managers?: string}} [opts]  The Experiment folder to answer, relative
+ *   to the root, for an add-on that declares Experiments, how the work folder is typed, where
+ *   not as the prompt prints it, the agent's build judgement, the reviewer's answer to the
+ *   override question, and their answer to the decision question.
  * @returns {{code: number, stdout: string, stderr: string}}  The last hand-back's run.
  */
 export function handBackRoots(
@@ -420,13 +485,12 @@ export function handBackRoots(
     safety = "safe",
     override = "Continue building",
     managers = "Let the agent build",
-    source,
   } = {}
 ) {
   const work = workOf(stdout);
   const handBack = (out) =>
     typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
-  const unpacked = unpackSource(stdout, { experimentsFolder, typed, source });
+  const unpacked = nameExperimentFolder(stdout, { experimentsFolder, typed });
   if (unpacked.code !== 0) {
     return unpacked;
   }

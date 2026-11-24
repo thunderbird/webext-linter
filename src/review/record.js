@@ -17,7 +17,8 @@
 //
 // The modes:
 //
-// - `unpack`: the agent extracts the source archive into `sca/` (--llm-auto-review only);
+// - `experiment-folder`: the agent names the Experiment folder in the source the linter
+//   extracted into `sca/` (--llm-auto-review of an add-on with Experiments only);
 // - `build-check`: the build of a source review is checked, step by step from `analyze` on
 //   (src/build-check/steps.js);
 // - `review`: the review loop, at the phase it handed out last (src/report/loop.js), and at
@@ -57,7 +58,7 @@ import { checkBuildCheck, recordBoolean } from "../build-check/state.js";
 
 /** The record's modes, which the hand-back switches on. */
 export const MODE = Object.freeze({
-  unpack: "unpack",
+  experimentFolder: "experiment-folder",
   buildCheck: "build-check",
   review: "review",
   downgrade: "downgrade",
@@ -247,7 +248,7 @@ function checkShape(record) {
     checkBuildCheck(record);
     return;
   }
-  if (mode === MODE.unpack) {
+  if (mode === MODE.experimentFolder) {
     return;
   }
   // A review in the loop is mode review's own part. Once the review ended, at the close or at

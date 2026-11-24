@@ -1,7 +1,7 @@
 // The build check of a source code review, one hand-back at a time (src/build-check/steps.js):
 // what its audit of a root's lock decides (src/build-check/audit.js), how the agent's build of
 // a clean lock is recorded, when a rescued copy is made, how a rescue is checked and how it
-// fails, what each hand-back refuses, which Experiment folder the unpack hand-back reads back,
+// fails, what each hand-back refuses, which Experiment folder the experiment-folder hand-back reads back,
 // which folders the record names for the hand-back's folder check, and what the review of a
 // rescued copy tells the developer (sca-dependencies-changed). Driven through handBack(), its
 // handout issued as the hand-back issues it, with OSV's answers seeded into a run cache folder
@@ -21,8 +21,8 @@ import AdmZip from "adm-zip";
 import {
   analyzeEntries,
   handBack,
-  unpackEntries,
-  unpackedExperiments,
+  experimentFolderEntries,
+  namedExperimentFolder,
 } from "../../src/build-check/steps.js";
 import {
   BUILD_CHECK_STEP,
@@ -1074,16 +1074,16 @@ test("an analyze hand-back with an entry twice or one never asked is refused", a
 });
 
 // A run cut short after the record moved to analyze, but before the review file held its
-// question, leaves the file the unpack mode handed out, asking nothing, or none. The next
+// question, leaves the file the experiment-folder mode handed out, asking nothing, or none. The next
 // hand-back hands the question out again, and answering it carries on as usual.
 test("an analyze question that was never written is handed out again", async () => {
-  for (const cut of ["unpack file", "no file"]) {
+  for (const cut of ["experiment-folder file", "no file"]) {
     const work = workFolder(
       { "package.json": packageFile(), "package-lock.json": npmLock() },
       { vulns: TOOL_CLEAN }
     );
     const file = workPaths(work).answers;
-    if (cut === "unpack file") {
+    if (cut === "experiment-folder file") {
       writeReviewFile(file, reviewFile([]));
     } else {
       fs.rmSync(file);
@@ -1319,28 +1319,28 @@ test("a pnpm tree vulnerability is rescued like an npm one", async () => {
   cleanup(work);
 });
 
-// ---- the Experiment folder the unpack hand-back reads back ----
+// ---- the Experiment folder the experiment-folder hand-back reads back ----
 
-// Unpack is a mode of its own, before the build check: where the add-on declares
+// experiment-folder is a mode of its own, before the build check: where the add-on declares
 // Experiments, its answers file asks for the Experiment folder, which the agent names as the
 // absolute path it has inside sca/. An answer missing, blank or relative is refused. Where
 // the add-on declares none, nothing is asked and nothing read.
-test("the unpack hand-back reads the Experiment folder as an absolute path", () => {
+test("the experiment-folder hand-back reads the Experiment folder as an absolute path", () => {
   const work = workFolder({ "exp/api.js": "" });
   const sca = workPaths(work).sca;
-  const unpacking = (experiments) => {
+  const asking = (experiments) => {
     const record = recordOf(work);
     return startMode(
       { ...record, submission: { ...record.submission, experiments } },
-      MODE.unpack,
+      MODE.experimentFolder,
       {},
-      "unpack"
+      "experiment-folder"
     );
   };
-  assert.deepEqual(unpackEntries(unpacking(false)), []);
-  assert.equal(unpackedExperiments(work, unpacking(false)), undefined);
-  const record = unpacking(true);
-  writeReviewFile(workPaths(work).answers, reviewFile(unpackEntries(record)));
+  assert.deepEqual(experimentFolderEntries(asking(false)), []);
+  assert.equal(namedExperimentFolder(work, asking(false)), undefined);
+  const record = asking(true);
+  writeReviewFile(workPaths(work).answers, reviewFile(experimentFolderEntries(record)));
   assert.deepEqual(reviewEntries(work), [
     { index: "SCA_EXPERIMENTS", answer: null },
   ]);
@@ -1351,13 +1351,13 @@ test("the unpack hand-back reads the Experiment folder as an absolute path", () 
   ]) {
     answer(work, { SCA_EXPERIMENTS: given });
     assert.throws(
-      () => unpackedExperiments(work, record),
+      () => namedExperimentFolder(work, record),
       refused(problem),
       String(given)
     );
   }
   answer(work, { SCA_EXPERIMENTS: ` ${path.join(sca, "exp")} ` });
-  assert.equal(unpackedExperiments(work, record), path.join(sca, "exp"));
+  assert.equal(namedExperimentFolder(work, record), path.join(sca, "exp"));
   cleanup(work);
 });
 

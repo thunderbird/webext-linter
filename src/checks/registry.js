@@ -834,10 +834,10 @@ export class Registry {
    * with, and one list of steps per prompt (SCA_PROMPT_STEPS). Required, all of them: a run
    * whose whole output is one of these has nothing to print without it.
    *
-   * A step comes back with its `when` condition parsed, never filtered here: which steps a
-   * run prints is layout, decided in src/report/format.js beside the flags themselves.
-   * `when: find-experiment` marks a step of `unpack` about the Experiment folder, printed only
-   * where the add-on declares Experiments, and `when: NOT build-overridden` a step of
+   * A step comes back with its `when` condition parsed, never filtered here: which steps a run
+   * prints is layout, decided in src/report/format.js beside the flags themselves. `when:
+   * find-experiment` marks a step of `experiment-folder` about the Experiment folder, printed
+   * only where the add-on declares Experiments, and `when: NOT build-overridden` a step of
    * `decision` printed only where `override-unsafe` did not come first.
    *
    * `buildOverride` is the question the override-unsafe prompt puts after an unsafe verdict:

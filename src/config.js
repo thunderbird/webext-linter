@@ -318,6 +318,13 @@ export const VENDOR_TARBALL_MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 export const ADDON_MAX_UNPACKED_BYTES = 128 * 1024 * 1024;
 
 /**
+ * Decompressed-size cap when the linter extracts a submitted source archive
+ * (src/addon/source-archive.js), for the same reason. A source holds more than the add-on it
+ * builds (its build files, tests, assets), so the cap sits above ADDON_MAX_UNPACKED_BYTES.
+ */
+export const SOURCE_ARCHIVE_MAX_UNPACKED_BYTES = 256 * 1024 * 1024;
+
+/**
  * OSV vulnerability database query endpoint (https://osv.dev). A pinned
  * package.json dependency (name@version, exact or lock-resolved) is POSTed here
  * to learn whether the bundled version has known advisories. No API token is

@@ -1512,7 +1512,13 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the build check prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  for (const name of ["unpack", "analyze", "decision", "build", "rescue"]) {
+  for (const name of [
+    "experiment-folder",
+    "analyze",
+    "decision",
+    "build",
+    "rescue",
+  ]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
       assert.equal(typeof step.text, "string");
@@ -1520,9 +1526,13 @@ test("the build check prompts come from the registry and every part is required"
       assert.ok(step.when === null || typeof step.when === "object");
     }
   }
-  // The Experiment folder is asked for in the unpack prompt alone, where the add-on declares
-  // Experiments, before the package root is settled: its own step, and the review file step.
-  assert.equal(prompt.steps.unpack.filter((s) => s.when !== null).length, 2);
+  // The Experiment folder is asked for in the experiment-folder prompt alone, where the add-on
+  // declares Experiments, before the package root is settled: its own step, and the review
+  // file step.
+  assert.equal(
+    prompt.steps["experiment-folder"].filter((s) => s.when !== null).length,
+    2
+  );
   assert.equal(prompt.steps.analyze.filter((s) => s.when !== null).length, 0);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;

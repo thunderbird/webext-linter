@@ -93,7 +93,7 @@ function stopOf(work) {
   }
   const record = readRecord(work);
   const mode = modeOf(record);
-  if (mode === MODE.unpack || mode === MODE.buildCheck) {
+  if (mode === MODE.experimentFolder || mode === MODE.buildCheck) {
     return { stop: `${mode} at ${record.current.step}` };
   }
   if (mode === undefined) {

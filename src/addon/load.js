@@ -974,7 +974,7 @@ function linkCause(full, rootReal) {
  * @param {string} p  An entry name as the archive spells it.
  * @returns {string}
  */
-function entryKey(p) {
+export function entryKey(p) {
   return p.replace(/^\.\//, "");
 }
 
@@ -987,7 +987,7 @@ function entryKey(p) {
  * @param {string[]} keys
  * @returns {boolean}
  */
-function namesCollide(keys) {
+export function namesCollide(keys) {
   const files = new Set();
   for (const key of keys) {
     const folded = key.toLowerCase();
@@ -1024,7 +1024,7 @@ function walkedKey(rel) {
  * @param {string} p  Normalized posix path.
  * @returns {boolean}
  */
-function isSafeAddonPath(p) {
+export function isSafeAddonPath(p) {
   if (!p || p.startsWith("/") || /^[a-zA-Z]:/.test(p)) {
     return false;
   }

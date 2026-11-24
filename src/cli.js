@@ -30,6 +30,7 @@ import {
 } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
+import { extractSourceArchive } from "./addon/source-archive.js";
 import {
   defaultWorkFolder,
   misplacedFolders,
@@ -42,8 +43,8 @@ import {
   handBack,
   realSca,
   stepPromptLines,
-  unpackEntries,
-  unpackedExperiments,
+  experimentFolderEntries,
+  namedExperimentFolder,
 } from "./build-check/steps.js";
 import {
   ScaFoldersRejected,
@@ -801,7 +802,8 @@ async function run(argv, registry) {
 
   // --llm-auto-review works out which review an agent runs from the submission folder it is
   // given: one with only an .xpi is reviewed as --llm-review reviews that .xpi, and one with a
-  // source starts at unpack, whose hand-back reviews it. Settled here, in full, before any
+  // source has it extracted by the linter and reviewed, after naming the Experiment folder where
+  // the add-on declares Experiments. Settled here, in full, before any
   // of the flags below are read.
   if (values["llm-auto-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
@@ -1203,30 +1205,39 @@ async function reviewWithSource(values, addonPath, registry, format) {
 
 /**
  * The path of --llm-auto-review given a submission folder with a source archive (③): the
- * .xpi loaded, what the run was given added to the record, then mode unpack started, whose
- * prompt has the agent extract the archive into the work folder's sca/.
+ * .xpi loaded, what the run was given added to the record, and the source archive extracted
+ * by the linter into the work folder's sca/ (src/addon/source-archive.js). An add-on without
+ * Experiments is reviewed at once, its first prompt the build check's `analyze`. One with
+ * Experiments starts mode experiment-folder, whose prompt has the agent name the Experiment
+ * folder in sca/, and whose hand-back reviews it. An archive the linter refuses ends the run
+ * as a failure, naming the problem: nothing could be reviewed.
  * @param {Record<string, string|boolean>} values  Parsed and checked.
  * @param {{folder: string, xpi: string, source: string}} submission  The folder, as read
  *   (src/addon/submission.js).
  * @param {import("./checks/registry.js").Registry} registry
- * @returns {number}
+ * @returns {Promise<number>}
  */
-function autoReview(values, submission, registry) {
+async function autoReview(values, submission, registry) {
   clearCachesAsked(values);
   const loaded = loadTheXpi(
     submission.xpi,
     defaultWorkFolder(submission.xpi, "sca")
   );
+  const given = addGiven(loaded, submission.xpi, "sca", forwardedFlags(values));
+  await extractSourceArchive(submission.source, workPaths(loaded.work).sca);
+  if (!given.submission.experiments) {
+    return startSourceReview(loaded.work, given, registry, undefined);
+  }
   const record = startMode(
-    addGiven(loaded, submission.xpi, "sca", forwardedFlags(values)),
-    MODE.unpack,
+    given,
+    MODE.experimentFolder,
     {},
-    "unpack"
+    "experiment-folder"
   );
   issueHandbackPrompt(
     loaded.work,
     record,
-    unpackEntries(record),
+    experimentFolderEntries(record),
     stepPromptLines(loaded.work, record, registry, { first: true, submission })
   );
   return 0;
@@ -1342,8 +1353,8 @@ async function runHandback(work, registry) {
     setVerbose(true);
   }
   switch (mode) {
-    case MODE.unpack:
-      return unpackCase(work, record, registry);
+    case MODE.experimentFolder:
+      return experimentFolderCase(work, record, registry);
     case MODE.buildCheck:
       return buildCheckCase(work, record, registry);
     case MODE.review:
@@ -1367,13 +1378,13 @@ function handbackFailure(text) {
 }
 
 /**
- * What is wrong with the Experiment folder the agent named at unpack, as approveScaFolders
- * threw it, said as the problem a refusal fills in.
+ * What is wrong with the Experiment folder the agent named at experiment-folder, as
+ * approveScaFolders threw it, said as the problem a refusal fills in.
  * @param {import("./addon/package-root.js").ScaFoldersRejected} problem
  * @param {string} sca  The real sca/.
  * @returns {string}
  */
-function unpackProblem({ problem, real }, sca) {
+function experimentFolderProblem({ problem, real }, sca) {
   if (problem === "outside" || problem === "not-folder") {
     return `SCA_EXPERIMENTS "${real}" is not a folder inside "${sca}"`;
   }
@@ -1390,18 +1401,41 @@ function unpackProblem({ problem, real }, sca) {
 }
 
 /**
- * The unpack case: the agent's sca/ a real folder, the Experiment folder it named approved
- * against it, the folder sca/ added to the record, the package root settled there, and the
- * review of the loaded submission, LLM.
+ * The experiment-folder case: the Experiment folder the agent named in sca/, and the review of
+ * the source started (startSourceReview).
  * @param {string} work
- * @param {object} record  In mode unpack.
+ * @param {object} record  In mode experiment-folder.
  * @param {import("./checks/registry.js").Registry} registry
  * @returns {Promise<number>}
  * @throws {HandbackRefused}
  */
-async function unpackCase(work, record, registry) {
+async function experimentFolderCase(work, record, registry) {
+  // The extracted source first: an answer naming a folder in a sca/ that is gone means
+  // nothing.
+  realSca(workPaths(work));
+  return startSourceReview(
+    work,
+    record,
+    registry,
+    namedExperimentFolder(work, record)
+  );
+}
+
+/**
+ * The review of a source the linter extracted into sca/ started: sca/ a real folder, the
+ * Experiment folder (where the add-on declares Experiments) approved against it, the folder
+ * sca/ added to the record, the package root settled there, and the review of the loaded
+ * submission, LLM, whose first prompt is the build check's. Run at once by --llm-auto-review
+ * for an add-on without Experiments, and by the experiment-folder hand-back for one with them.
+ * @param {string} work
+ * @param {object} record
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string|undefined} experiments  The Experiment folder the agent named, if any.
+ * @returns {Promise<number>}
+ * @throws {HandbackRefused}  An Experiment folder the agent named that does not fit.
+ */
+async function startSourceReview(work, record, registry, experiments) {
   const sca = realSca(workPaths(work));
-  const experiments = unpackedExperiments(work, record);
   let approved;
   try {
     approved = approveScaFolders(
@@ -1412,7 +1446,7 @@ async function unpackCase(work, record, registry) {
     if (!(err instanceof ScaFoldersRejected)) {
       throw err;
     }
-    throw new HandbackRefused(unpackProblem(err, sca));
+    throw new HandbackRefused(experimentFolderProblem(err, sca));
   }
   const unpacked = addToRecord(work, record, {
     folders: { sca: workPaths(work).sca },

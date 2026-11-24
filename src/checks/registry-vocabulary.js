@@ -301,10 +301,10 @@ export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
 export const DOWNGRADE_PHASE = "downgrade";
 export const DOWNGRADE_RESTART = "xpi";
 
-/** The facts the build check prompts' `when:` conditions can name: whether `unpack` asks its
- *  reader for the Experiment folder - the built add-on declares Experiments
- *  (src/build-check/steps.js asksExperiments) - whether the reviewer overrode an unsafe
- *  verdict at `override-unsafe`, so `decision` does not show the Build Review Details a
+/** The facts the build check prompts' `when:` conditions can name: whether
+ *  `experiment-folder` asks its reader for the Experiment folder - the built add-on declares
+ *  Experiments (src/build-check/steps.js asksExperiments) - whether the reviewer overrode an
+ *  unsafe verdict at `override-unsafe`, so `decision` does not show the Build Review Details a
  *  second time, and whether the audit at `analyze` found a high or critical advisory in the
  *  lock (`build-vulnerable`), which decides the answers `decision` offers. */
 export const SCA_PROMPT_FACTS = [
@@ -313,14 +313,14 @@ export const SCA_PROMPT_FACTS = [
   "build-vulnerable",
 ];
 
-/** The prompts of modes unpack and build-check, one step list each, named for the step
- *  that prints it (src/build-check/state.js BUILD_CHECK_STEP): `unpack` where the agent
- *  extracts the source archive, `analyze` where the build is worked out, `override-unsafe`
- *  after an unsafe judgement, `decision` after a safe one or an overridden unsafe one, then
- *  `build` for a lock audited clean or `rescue` for a vulnerable one. Once the build check is
- *  done, the hand-back starts the review instead. */
+/** The prompts of modes experiment-folder and build-check, one step list each, named for the
+ *  step that prints it (src/build-check/state.js BUILD_CHECK_STEP): `experiment-folder` where
+ *  the agent names the Experiment folder in the source the linter extracted, `analyze` where
+ *  the build is worked out, `override-unsafe` after an unsafe judgement, `decision` after a
+ *  safe one or an overridden unsafe one, then `build` for a lock audited clean or `rescue` for
+ *  a vulnerable one. Once the build check is done, the hand-back starts the review instead. */
 export const SCA_PROMPT_STEPS = [
-  "unpack",
+  "experiment-folder",
   "analyze",
   "override-unsafe",
   "decision",

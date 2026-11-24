@@ -1,16 +1,16 @@
 // What a submission looks like on disk, for --llm-auto-review: a folder holding the built
 // add-on and, for a source code review, an archive of the source it was built from.
 //
-// An SCA review needs the source archive's own paths, and nobody can write
-// --sca-experiments without opening it. This module
-// does the half a program can do: which file is the add-on and which is the source. The
-// prompt hands the rest to whoever can open the archive.
+// This module says which file is the add-on and which is the source. The linter then
+// extracts the source archive itself (src/addon/source-archive.js), and the prompt asks a
+// reader only for what reading the source settles: the Experiment folder, where the add-on
+// declares Experiments.
 //
 // Belongs here: locating those files, and refusing a folder that does not hold them.
 //
 // Does NOT belong here: reading either file (src/addon/load.js), where the source archive
-// is extracted (the review's work folder, src/util/dest.js workPaths), extracting it, which
-// stays the reader's (this tool cannot open every format the source arrives in), the
+// is extracted (the review's work folder, src/util/dest.js workPaths), extracting it
+// (src/addon/source-archive.js, which tells the archive's type by its content), the
 // prompt's wording (assets/registry.yaml), how it is printed
 // (src/report/format.js), or the NAME of the flag that asked - src/cli.js owns the
 // options table, so it says which flag was wrong and this says what was found. A caller
@@ -29,8 +29,8 @@ const ADDON_EXTENSION = ".xpi";
  * ARCHIVE_EXTENSIONS: that one answers "is this file, inside a submission, a committed
  * binary artifact" for committed-build-artifact and unused-files, and it is scoped to
  * what those checks care about. The question here is different - which of two files is the
- * source a reader is being sent to extract - and the answer includes formats this tool
- * never opens, because the reader's `tar` does.
+ * source - and it is read from the name alone. Whether the linter can extract it is decided by
+ * its content (src/addon/source-archive.js), which refuses every type ATN does not accept.
  *
  * Read from the END of the name, so a double-packed `.tar.gz` is a `.gz` and an ATN-mangled
  * `…-src.tar_UubDLRC.gz` still lands here.
@@ -52,8 +52,8 @@ const SOURCE_ARCHIVE_EXTENSIONS = new Set([
  * from where one was submitted (no `source` key where there is none).
  *
  * The add-on is the one file named .xpi; the source is the one ARCHIVE beside it. This
- * never opens that archive - the prompt's reader extracts it - but it has to say which
- * file it is, so the name is all there is to go on.
+ * never opens that archive - the linter extracts it afterwards - so the name is all there is
+ * to go on.
  *
  * Only the top level is read, and only archives are counted: a README, a licence, a
  * .DS_Store a download picked up, a folder someone already extracted - none of them make a

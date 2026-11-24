@@ -433,10 +433,10 @@ function isValueBlock(paragraph) {
   return lines.every((l) => /^[A-Z][A-Z0-9_]*\s/.test(l.trim()));
 }
 
-/** The values the `unpack` prompt hands its reader, in the order its steps use them. Named
- *  here because the prompt's steps name them: the facts are a table the reader looks up, never
- *  a sentence they have to extract a path from. The first three are read off the submission.
- *  EXTRACT_TO is the work folder's own: where the source archive is extracted. */
+/** The values the `experiment-folder` prompt hands its reader, in the order its steps use
+ *  them. Named here because the prompt's steps name them: the facts are a table the reader
+ *  looks up, never a sentence they have to extract a path from. The first three are read off the submission.
+ *  EXTRACT_TO is the work folder's own: where the linter extracted the source archive. */
 const SUBMISSION_VALUES = [
   ["XPI", (v) => v.submission.xpi],
   ["SOURCE_ARCHIVE", (v) => v.submission.source],
@@ -475,14 +475,13 @@ function valueLines(entries) {
  * One renderer for every one of them (SCA_PROMPT_STEPS), so they read alike. Three parts on
  * purpose. The VALUES are `NAME` with its value beneath it, never wrapped, so a reader takes
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
- * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
- * it can still name where one should land - ANSWERS on every later prompt, and on `unpack`
- * where it asks for the Experiment folder, and the
- * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_REPORT on the `analyze` prompt,
- * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT on the build's, and RESCUE_ROOT,
- * LLM_BUILD_ROOT and SCA_BUILD_REPORT on the rescue's. The STEPS are prose, and they name those given values - and the one the
- * reader of `unpack` may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
- * themselves. The FLAGS are the finished command, one flag per line, filled into the step
+ * `experiment-folder` prompt - EXTRACT_TO among them, where the linter extracted the source -
+ * ANSWERS on every prompt, and the Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and
+ * SCA_BUILD_REPORT on the `analyze` prompt, SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and
+ * SCA_BUILD_REPORT on the build's, and RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT on
+ * the rescue's. The STEPS are prose, and they name those given values - and the one the
+ * reader of `experiment-folder` has to work out, <SCA_EXPERIMENTS> - instead of carrying
+ * paths themselves. The FLAGS are the finished command, one flag per line, filled into the step
  * that says to run it, and the COPY is the rescue's two commands that make the build copy,
  * filled into its step the same way.
  * The intro opens a run's first prompt only (`first`): it says what the build check is, once.
@@ -494,16 +493,18 @@ function valueLines(entries) {
  * @param {string} list  Which prompt: one of SCA_PROMPT_STEPS.
  * @param {object} values
  * @param {boolean} [values.first]  The run's first prompt, which opens with the intro: the
- *   `unpack` prompt of --llm-auto-review, or the `analyze` prompt of a review given --sca-extracted.
+ *   `experiment-folder` prompt of --llm-auto-review for an add-on with Experiments, or else
+ *   the `analyze` prompt.
  * @param {{folder: string, xpi: string, source: string}} [values.submission]  From
- *   scaSubmission(), on the `unpack` prompt alone.
- * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
+ *   scaSubmission(), on the `experiment-folder` prompt alone.
+ * @param {string} [values.extractTo]  Beside `submission`: where the linter extracted the
  *   source archive, the `sca` folder of the work folder (src/util/dest.js workPaths), ending
  *   in a separator so it reads as the folder it is.
  * @param {string} [values.buildProcess]  Where the build report is written, the work
  *   folder's build.md: on the analyze, build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: on every
- *   prompt after `unpack`, and on `unpack` where it asks for the Experiment folder.
+ *   prompt after `experiment-folder`, and on `experiment-folder` where it asks for the
+ *   Experiment folder.
  * @param {string} [values.scaSource]  On the analyze prompt: the copy of the extracted source
  *   archive, `sca/`, all of which the build analysis reads.
  * @param {string} [values.scaPackageRoot]  On the analyze and build prompts: the package root, in
@@ -518,8 +519,8 @@ function valueLines(entries) {
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
- * @param {boolean} [values.findExperiment]  Whether `unpack` asks for the Experiment folder
- *   (src/build-check/steps.js asksExperiments).
+ * @param {boolean} [values.findExperiment]  Whether `experiment-folder` asks for the Experiment
+ *   folder (src/build-check/steps.js asksExperiments).
  * @param {boolean} [values.buildOverridden]  On the decision prompt: whether the reviewer
  *   overrode an unsafe verdict at `override-unsafe`, which already showed the Build Review
  *   Details.
@@ -561,9 +562,9 @@ export function scaPromptLines(prompt, list, values) {
   // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
   // for a file that does not exist - or, worse, for a different one that does.
   const command = values.flags.map(displayPath);
-  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): whether `unpack` asks
-  // for the Experiment folder, and whether `decision` follows an override of an unsafe
-  // verdict.
+  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): whether
+  // `experiment-folder` asks for the Experiment folder, and whether `decision` follows an
+  // override of an unsafe verdict.
   const facts = new Set([
     ...(values.findExperiment ? ["find-experiment"] : []),
     ...(values.buildOverridden ? ["build-overridden"] : []),

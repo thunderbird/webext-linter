@@ -10,7 +10,7 @@ node verify.js <submission folder> --llm-auto-review
 
 with the variable exported for the whole session, so every `--llm-handback` the agent runs
 inherits it: the build check reads it where it would ask the decision question, and never
-records it. The agent follows every prompt with real tools: it extracts the archive, writes build.md, lists what
+records it. The linter extracts the source archive itself. The agent follows every prompt with real tools: it names the Experiment folder where asked, writes build.md, lists what
 the build reaches for outside the declared dependencies, and hands back. The linter audits the lock against OSV, and the agent rescues the
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands
 back until it reaches one of three stops, and goes no further:
@@ -65,7 +65,7 @@ abort it compares `LLM_BUILD_RESULT` and the counts of `LLM_RESCUED_VULNERABILIT
 names, settles the review as the closing prompt does, and compares the abort reasons
 (as a set) and the error findings the case names. At the downgrade question it reads the
 settled review the same way. A run that stopped anywhere else, in the
-build check (`.review/state.json` in mode unpack or build-check) or at another phase, is a mismatch naming where it
+build check (`.review/state.json` in mode experiment-folder or build-check) or at another phase, is a mismatch naming where it
 stopped. Package versions are never compared.
 
 A mismatch is reported with the case, the stop reached and the diff. A new advisory that

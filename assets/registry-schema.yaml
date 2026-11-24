@@ -460,13 +460,14 @@ sections:
         kind: text
         required: true
         why: what the prompt tells its reader first
-      unpack:
+      experiment-folder:
         kind: list
         of: mapping
         required: true
-        noun: "`unpack` steps"
+        noun: "`experiment-folder` steps"
         why: >-
-          the steps the prompt that has the source archive extracted asks for, in order
+          the steps the prompt that has the Experiment folder named in the extracted source
+          asks for, in order
       analyze:
         kind: list
         of: mapping

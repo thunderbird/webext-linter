@@ -179,9 +179,16 @@ test("--sca-extracted must not include the add-on", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+/** A source archive the linter can extract, holding one file, written to `file`. */
+function sourceZip(file) {
+  const zip = new AdmZip();
+  zip.addFile("README.md", Buffer.from("# x\n"));
+  zip.writeZip(file);
+}
+
 // The work folder says what kind of review it holds: `xpi-review-` for a review of the XPI
 // alone, plain or with --llm-review, and `sca-review-` for a source code review, whether it
-// is unpacked with --llm-auto-review or started with --sca-extracted.
+// is extracted by --llm-auto-review or started with --sca-extracted.
 test("the work folder is named by the kind of review", () => {
   const madeBeside = (target, args) => {
     const parent = path.dirname(target);
@@ -215,9 +222,9 @@ test("the work folder is named by the kind of review", () => {
     Buffer.from('{"manifest_version":2,"name":"x","version":"1"}')
   );
   zip.writeZip(path.join(dir, "a.xpi"));
-  fs.writeFileSync(path.join(dir, "src.zip"), "");
+  sourceZip(path.join(dir, "src.zip"));
   const before = new Set(fs.readdirSync(dir));
-  const begun = run(["--llm-auto-review", dir]);
+  const begun = run(["--llm-auto-review", dir, ...OFFLINE_FLAGS]);
   assert.equal(begun.code, 0, begun.stderr);
   const made = fs.readdirSync(dir).filter((n) => !before.has(n));
   assert.equal(made.length, 1);
@@ -262,7 +269,7 @@ test("an .xpi or a source archive given through a link is refused", () => {
     Buffer.from('{"manifest_version":2,"name":"x","version":"1"}')
   );
   zip.writeZip(path.join(real, "a.xpi"));
-  fs.writeFileSync(path.join(real, "src.zip"), "");
+  sourceZip(path.join(real, "src.zip"));
   const linkedXpi = path.join(dir, "linked.xpi");
   fs.symlinkSync(path.join(real, "a.xpi"), linkedXpi);
   const r = runFile(REVIEW, [linkedXpi]);
@@ -273,7 +280,7 @@ test("an .xpi or a source archive given through a link is refused", () => {
   // A submission folder named through a link is accepted ...
   const folderLink = path.join(dir, "submission");
   fs.symlinkSync(real, folderLink);
-  const begun = run(["--llm-auto-review", folderLink]);
+  const begun = run(["--llm-auto-review", folderLink, ...OFFLINE_FLAGS]);
   assert.equal(begun.code, 0, begun.stderr);
   // ... but not a submission whose files are links.
   for (const name of ["a.xpi", "src.zip"]) {

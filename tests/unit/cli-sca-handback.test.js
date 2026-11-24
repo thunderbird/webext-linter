@@ -24,7 +24,9 @@ import {
   defaultFolderOf,
   submissionFolder,
   packAddon,
-  unpackSource,
+  packSource,
+  NO_LOCK_SOURCE,
+  nameExperimentFolder,
   workOf,
   readJson,
   handBackRoots,
@@ -38,13 +40,15 @@ import {
 test("the build check quotes an argument that carries whitespace", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
   packAddon(path.join(dir, "addon  v2.xpi"));
-  fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+  packSource(path.join(dir, "src.tar.gz"), NO_LOCK_SOURCE);
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
-  // The values above the command are read by eye, not typed, so they carry no quotes, and
-  // keep the run of spaces the file name has.
-  assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
-  assert.equal(headerValue(r.stdout, "XPI"), path.join(dir, "addon  v2.xpi"));
+  // The values above the command are read by eye, not typed, so they carry no quotes.
+  assert.equal(
+    headerValue(r.stdout, "SCA_SOURCE"),
+    workPaths(workOf(r.stdout)).sca
+  );
+  assert.ok(headerValue(r.stdout, "SCA_SOURCE").startsWith(`${dir}/`));
   assert.match(
     r.stdout,
     new RegExp(`--llm-handback '${dir}/sca-review-addon__v2-`)
@@ -77,18 +81,18 @@ test("a hand-back takes its folder as one absolute name", () => {
 });
 
 // One run of the early-exit checks per path, once ctx holds every artifact they read: with a
-// source, the agent extracts the archive first, so a rejected Experiment costs that one
-// extraction. The early-exit checks then run in the unpack case and reject it, and the review
-// closes at once, the same close --llm-review of the .xpi gives. An Experiment the review
-// accepts goes on to its build check, and either way the verdict is recorded by the run that
-// decides it, for every later run.
-test("--llm-auto-review has an Experiment it would reject unpacked first, then closed", () => {
+// source, the linter extracts the archive first and the agent names the Experiment folder, so a
+// rejected Experiment costs that one answer. The early-exit checks then run in the
+// experiment-folder case and reject it, and the review closes at once, the same close
+// --llm-review of the .xpi gives. An Experiment the review accepts goes on to its build check,
+// and either way the verdict is recorded by the run that decides it, for every later run.
+test("--llm-auto-review has an Experiment it would reject extracted first, then closed", () => {
   const submission = (fixture) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-gate-"));
     const zip = new AdmZip();
     zip.addLocalFolder(path.join(ROOT, "tests", "addons", fixture));
     zip.writeZip(path.join(dir, "addon.xpi"));
-    fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+    packSource(path.join(dir, "src.tar.gz"), NO_LOCK_SOURCE, "experiment");
     return dir;
   };
   const dir = submission("experiment-disallowed");
@@ -96,8 +100,10 @@ test("--llm-auto-review has an Experiment it would reject unpacked first, then c
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── SCA Review Prompt ──/);
   const work = defaultFolderOf(path.join(dir, "addon.xpi"), "sca");
-  assert.equal(readJson(work, "state").current.mode, "unpack");
-  const closed = unpackSource(r.stdout, { experimentsFolder: "experiment" });
+  assert.equal(readJson(work, "state").current.mode, "experiment-folder");
+  const closed = nameExperimentFolder(r.stdout, {
+    experimentsFolder: "experiment",
+  });
   assert.equal(closed.code, 1, closed.stdout + closed.stderr);
   assert.match(closed.stdout, /── LLM Prompt ──/);
   assert.match(closed.stdout, /The review was aborted/);
@@ -127,7 +133,7 @@ test("--llm-auto-review has an Experiment it would reject unpacked first, then c
       ...extra,
     ]);
     assert.equal(first.code, 0, first.stderr);
-    const analyze = unpackSource(first.stdout, {
+    const analyze = nameExperimentFolder(first.stdout, {
       experimentsFolder: "experiment",
     });
     assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
@@ -172,7 +178,7 @@ test("a hand-back whose work folder lost a folder the linter made is exit 2", ()
   const dir = submissionFolder();
   const begun = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(begun.code, 0, begun.stderr);
-  assert.equal(unpackSource(begun.stdout).code, 0);
+  assert.equal(nameExperimentFolder(begun.stdout).code, 0);
   const work = workOf(begun.stdout);
   assert.equal(readJson(work, "state").current.step, "analyze");
   lost(work, "xpi");
@@ -231,7 +237,12 @@ test("a broken .xpi fails before any build check starts", () => {
 // The build check records every cache its review is to read, given or default, as one
 // absolute name: a hand-back started from another directory reads the same caches.
 test("the build check records every cache as an absolute path", () => {
-  const dir = submissionFolder();
+  // An add-on with Experiments, whose first run stops at the experiment-folder question
+  // before any cache is read.
+  const dir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { foo: {} } },
+    experimentsFolder: "experiment",
+  });
   const cwd = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "wl-cwd-"))
   );
@@ -302,11 +313,23 @@ test("an unknown check id is refused before a prompt is printed", () => {
 // being told: the unpack hand-back populates ctx, and its debug lines are held with stderr,
 // never printed into the prompt on stdout.
 test("a review started with --verbose runs its hand-backs verbose", () => {
-  const dir = submissionFolder();
-  const begun = run([dir, "--llm-auto-review", "--verbose", ...OFFLINE_FLAGS]);
+  // An add-on with Experiments, so the review starts in the hand-back that names the folder.
+  const dir = submissionFolder("addon.xpi", {
+    manifest: { experiment_apis: { foo: {} } },
+    experimentsFolder: "experiment",
+  });
+  const begun = run([
+    dir,
+    "--llm-auto-review",
+    "--verbose",
+    "--allow-experiments",
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(begun.code, 0, begun.stderr);
   assert.equal(readJson(workOf(begun.stdout), "state").flags.verbose, true);
-  const unpacked = unpackSource(begun.stdout);
+  const unpacked = nameExperimentFolder(begun.stdout, {
+    experimentsFolder: "experiment",
+  });
   assert.equal(unpacked.code, 0, unpacked.stderr);
   assert.ok(!unpacked.stdout.includes("schema files from"), unpacked.stdout);
   assert.match(unpacked.stderr, /── Tool messages ──[\s\S]*schema files from/);
