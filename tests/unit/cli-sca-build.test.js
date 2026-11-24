@@ -83,14 +83,14 @@ function permittedPrompt(vulns) {
   return { work, stdout: next.stdout, dir };
 }
 
-/** What the build and rescue prompts say of the agent's comparison of its output with the
- *  submitted XPI, which it answers as LLM_BUILD_XPI_MATCH. */
+/** What the build and rescue prompts say of comparing the output with the submitted XPI: the
+ *  linter does it, so the agent compares nothing. */
 const COMPARED = [
-  "compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ.",
-  'Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else',
-  "`match` means exactly the comparison above holds, and nothing less.",
-  "Write no notes and no list of differences",
+  "Compare nothing with the submitted XPI: the linter does that itself.",
 ];
+
+/** What the build and rescue prompts no longer hold, now the linter compares the output. */
+const NOT_COMPARED = ["SUBMITTED_XPI", "LLM_BUILD_XPI_MATCH"];
 
 /** How the build and rescue prompts install: as the lock pins it, and with no install script,
  *  since nobody has read a dependency's. */
@@ -246,8 +246,7 @@ test("each details block holds every row of the block before it", () => {
   assert.equal(build.code, 0, build.stdout + build.stderr);
   const xpi = readJson(work, "state").submission.xpi;
   answer(work, {
-    LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
-    LLM_BUILD_XPI_MATCH: "match",
+    LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy, workPaths(work).xpi),
   });
   let out = run(argvOf(commandOf(build.stdout)));
   const blocks = [["decision", detailRowsOf(decision.stdout)]];
@@ -315,8 +314,8 @@ test("each details block holds every row of the block before it", () => {
 });
 
 // A clean lock is built: the prompt after the decision names the package root, its place in
-// the build copy the linter made to build it in, the build report and the submitted XPI, and
-// asks for the build's final artifact and its comparison with that XPI. The agent copies
+// the build copy the linter made to build it in and the build report, and asks for the build's
+// final artifact only, since the linter compares it with the submitted XPI. The agent copies
 // nothing.
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
@@ -331,10 +330,6 @@ test("the hand-back prints a clean source's build", () => {
   assert.ok(
     fs.existsSync(path.join(workPaths(work).buildCopy, "package.json"))
   );
-  assert.equal(
-    headerValue(stdout, "SUBMITTED_XPI"),
-    readJson(work, "state").submission.xpi
-  );
   assert.ok(!unwrapped(stdout).includes("Copy SCA_PACKAGE_ROOT"));
   for (const said of [
     "Build in LLM_BUILD_ROOT, and only there",
@@ -342,9 +337,11 @@ test("the hand-back prints a clean source's build", () => {
     OUTPUT_PATH,
     '"Build attempt"',
     ...COMPARED,
-    'Where the build failed, leave its "answer" null.',
   ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
+  }
+  for (const gone of NOT_COMPARED) {
+    assert.ok(!unwrapped(stdout).includes(gone), gone);
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -366,10 +363,6 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     workPaths(work).buildCopy
   );
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
-  assert.equal(
-    headerValue(stdout, "SUBMITTED_XPI"),
-    readJson(work, "state").submission.xpi
-  );
   // The agent replaces build/ with a copy of the whole rescued/ before each build, with
   // exactly these two commands, printed as they are run.
   const commands = [
@@ -390,9 +383,11 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     '"label" of its one answer',
     OUTPUT_PATH,
     ...COMPARED,
-    'Where the rescue failed, leave its "answer" null.',
   ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
+  }
+  for (const gone of NOT_COMPARED) {
+    assert.ok(!unwrapped(stdout).includes(gone), gone);
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });

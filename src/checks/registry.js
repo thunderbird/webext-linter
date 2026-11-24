@@ -64,7 +64,6 @@ import {
   SCA_PROMPT_STEPS,
   SCA_PROMPT_COMMAND,
   BUILD_PERMISSION_BY_VERDICT,
-  BUILD_MATCH_VALUES,
   REVIEW_PROMPT_FACTS,
   CHECK_FACTS,
 } from "./registry-vocabulary.js";
@@ -840,16 +839,13 @@ export class Registry {
    * one issue in SCA_SOURCE, the one the hand-back holds them to (src/report/format.js
    * scaPromptLines, src/report/sweep.js). `buildOutput` and `rescueOutput` are the entries the
    * build and rescue prompts name what the build produced in: the question, and the one
-   * answer each offers besides a path. `buildMatch` is the entry both compare that output
-   * with the submitted XPI in: its question, and the two answers it offers, each by its id
-   * (BUILD_MATCH_VALUES).
+   * answer each offers besides a path. How that output compares with the submitted XPI is
+   * the linter's own comparison, asked of nobody.
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
    *   buildDecision: Record<"safe"|"unsafe", {question: string,
    *     values: {value: string, label: string, description: string}[]}>,
-   *   buildOutput: BuildOutputAsk, rescueOutput: BuildOutputAsk,
-   *   buildMatch: {question: string,
-   *     values: {value: string, label: string, description: string}[]}}}
+   *   buildOutput: BuildOutputAsk, rescueOutput: BuildOutputAsk}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
@@ -891,10 +887,6 @@ export class Registry {
       ),
       buildOutput: output(p["build-output"]),
       rescueOutput: output(p["rescue-output"]),
-      buildMatch: {
-        question: p["build-match"].question,
-        values: values(p["build-match"].values),
-      },
     };
   }
 
@@ -1947,14 +1939,13 @@ export function assertScaPrompt(registry, at) {
   }
   // Every answer is read as one of its ids, so each is offered once, under a label of its
   // own: a missing one could not be chosen, and two equal labels would read as either.
-  for (const [key, values, ids] of [
-    ...Object.entries(BUILD_PERMISSION_BY_VERDICT).map(([verdict, ids]) => [
-      `build-decision\` \`${verdict}`,
-      prompt["build-decision"][verdict].values,
-      ids,
-    ]),
-    ["build-match", prompt["build-match"].values, BUILD_MATCH_VALUES],
-  ]) {
+  for (const [key, values, ids] of Object.entries(
+    BUILD_PERMISSION_BY_VERDICT
+  ).map(([verdict, ids]) => [
+    `build-decision\` \`${verdict}`,
+    prompt["build-decision"][verdict].values,
+    ids,
+  ])) {
     const stray = values.find((v) => !ids.includes(v.value));
     if (stray) {
       throw new Error(

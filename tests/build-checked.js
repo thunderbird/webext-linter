@@ -140,14 +140,20 @@ export function writeBuildReport(work) {
 }
 
 /**
- * The agent's build, as a test makes one: an empty `dist/` folder inside `folder`, which is
- * where the build put what it produced. Empty, so a rescued copy's review reads nothing new.
+ * The agent's build, as a test makes one: a `dist/` folder inside `folder`, which is where the
+ * build put what it produced. Empty, so a rescued copy's review reads nothing new and the
+ * linter finds no match with the submitted XPI, unless `reproduces` names the extracted XPI
+ * to copy into it, which the linter then finds the same.
  * @param {string} folder
+ * @param {?string} [reproduces]  The work folder's extracted XPI, for a build that matches it.
  * @returns {string}  The output, absolute.
  */
-export function buildInto(folder) {
+export function buildInto(folder, reproduces = null) {
   const output = path.join(folder, "dist");
   fs.mkdirSync(output, { recursive: true });
+  if (reproduces) {
+    fs.cpSync(reproduces, output, { recursive: true });
+  }
   return output;
 }
 
@@ -156,13 +162,17 @@ export function buildInto(folder) {
  * copy of the whole `rescued/`, and built at the root's place in it (buildInto).
  * @param {string} work  The work folder, real.
  * @param {string} root  The rescued copy's root.
+ * @param {boolean} [reproduces]  Whether the build matches the submitted XPI.
  * @returns {string}  The output, absolute.
  */
-export function buildRescued(work, root) {
-  const { rescued, buildCopy } = workPaths(work);
+export function buildRescued(work, root, reproduces = false) {
+  const { rescued, buildCopy, xpi } = workPaths(work);
   fs.rmSync(buildCopy, { recursive: true, force: true });
   fs.cpSync(rescued, buildCopy, { recursive: true, verbatimSymlinks: true });
-  return buildInto(path.join(buildCopy, path.relative(rescued, root)));
+  return buildInto(
+    path.join(buildCopy, path.relative(rescued, root)),
+    reproduces ? xpi : null
+  );
 }
 
 /**
@@ -178,8 +188,9 @@ export function buildRescued(work, root) {
  * after which a copy of it is built in build/ (buildRescued) - or null, for an agent that answers that the
  * rescue failed, so build/ is deleted, the copy stays, and the original is done, its roots back
  * in sca/.
- * Each step is asserted to move as the build check moves it. A build's output is compared
- * with the submitted XPI as `match` says, `no match` unless it says otherwise.
+ * Each step is asserted to move as the build check moves it. A build's output reproduces the
+ * submitted XPI where `match` is `match`, so the linter's comparison finds it the same, and is
+ * an empty folder otherwise, which it finds no match.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
  *   rescue?: ?(copyRoot: string) => void, match?: string}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
@@ -256,8 +267,11 @@ export async function realBuildCheck({
     return finished(at);
   }
   if (at.record.current.step === BUILD_CHECK_STEP.build) {
-    const output = buildInto(workPaths(work).buildCopy);
-    answer(work, { LLM_BUILD_OUTPUT: output, LLM_BUILD_XPI_MATCH: match });
+    const output = buildInto(
+      workPaths(work).buildCopy,
+      match === "match" ? workPaths(work).xpi : null
+    );
+    answer(work, { LLM_BUILD_OUTPUT: output });
     at = await step();
     assert.equal(at.next, "review", "a clean source is built and reviewed");
     assert.equal(at.record.current.buildOutput, output);
@@ -273,18 +287,18 @@ export async function realBuildCheck({
   if (rescue) {
     rescue(at.record.current.roots.packageRoot);
     answer(work, {
-      LLM_BUILD_OUTPUT: buildRescued(work, at.record.current.roots.packageRoot),
-      LLM_BUILD_XPI_MATCH: match,
+      LLM_BUILD_OUTPUT: buildRescued(
+        work,
+        at.record.current.roots.packageRoot,
+        match === "match"
+      ),
     });
     at = await step();
     assert.equal(at.next, "review", "the rescued copy came out clean");
     assert.equal(at.record.current.buildResult, "built");
     return finished(at);
   }
-  answer(work, {
-    LLM_BUILD_OUTPUT: "The rescue failed",
-    LLM_BUILD_XPI_MATCH: null,
-  });
+  answer(work, { LLM_BUILD_OUTPUT: "The rescue failed" });
   at = await step();
   assert.equal(at.next, "review", "a failed rescue is reviewed unrescued");
   assert.equal(at.record.current.buildResult, "rescue-failed");

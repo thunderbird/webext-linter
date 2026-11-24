@@ -53,12 +53,12 @@ import {
  *   decision, and the next hand-back reads it and, where the agent may build, goes on by the
  *   audit at `analyze`;
  * - `build`: the package root's lock is clean, the linter copies `sca/` into `build/`, and
- *   the agent builds it there and names what the build produced and whether it matches the
- *   submitted XPI, or that it failed;
+ *   the agent builds it there and names what the build produced, or that it failed. The next
+ *   hand-back compares what it named with the submitted XPI;
  * - `rescue`: the package root's lock is vulnerable, and the agent makes the lock of the
  *   rescued copy in `rescued/` clean, builds a copy of it in `build/`, and names what the
- *   build produced and whether it matches the submitted XPI, or that the rescue failed. The
- *   next hand-back audits the copy and checks what it named;
+ *   build produced, or that the rescue failed. The next hand-back audits the copy, checks
+ *   what it named and compares it with the submitted XPI;
  * - `done`: the review may start here. A folder whose rescue failed is `done` too, its
  *   roots back in `sca/`. A review start that failed leaves the folder here, and the next
  *   hand-back starts it again.
@@ -127,8 +127,9 @@ const COUNTED = ["moderate", "high", "critical"];
  *   back, and null where it built nothing.
  * @property {?string} buildOutput  What the build produced, a file or folder, absolute and
  *   real: inside `build/`. Held only where `buildResult` is `built`.
- * @property {?string} buildMatch  The agent's comparison of that output with the submitted
- *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
+ * @property {?string} buildMatch  The linter's comparison of that output with the submitted
+ *   XPI (src/build-check/steps.js xpiMatch), a BUILD_MATCH_VALUES id. Held only where
+ *   `buildResult` is `built`.
  * @property {import("../addon/package-root.js").ScaFolders} roots  The settled folders,
  *   absolute and real: the source copy `sca/`, the tree the next step or the review reads
  *   (`used`: `sca/`, or `rescued/` while a rescue runs and once it came out clean), and the
@@ -322,7 +323,7 @@ function checkBuild(check, unaudited) {
     throw recordError(
       match === null || match === undefined
         ? "the build check's record holds a built result without buildMatch"
-        : "the build check's record holds buildMatch as no answer the agent can give"
+        : "the build check's record holds buildMatch as no comparison the linter writes"
     );
   }
 }

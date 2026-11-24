@@ -157,10 +157,7 @@ async function agentReview(opts) {
       answer(
         work,
         step === BUILD_CHECK_STEP.build
-          ? {
-              LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
-              LLM_BUILD_XPI_MATCH: "no match",
-            }
+          ? { LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy) }
           : {}
       );
       out = await handBack(work, readRecord(work), registry);

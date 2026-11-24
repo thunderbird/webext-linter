@@ -1627,28 +1627,14 @@ test("the build check prompts come from the registry and every part is required"
       key
     );
   }
-  // The build and the rescue each compare what the build produced with the submitted XPI,
-  // answered as match or no match, each offered once under a label of its own.
-  assert.deepEqual(
-    prompt.buildMatch.values.map((v) => [v.value, v.label]),
-    [
-      ["match", "match"],
-      ["no match", "no match"],
-    ]
-  );
-  const compared = (mutate) => {
-    const r = loadRegistry();
-    mutate(r.doc["llm-sca-review-prompt"]["build-match"]);
-    return r;
-  };
-  assert.throws(
-    () => checkScaPrompt(compared((m) => (m.values[1].value = "match"))),
-    /offers `match` other than once/
-  );
-  assert.throws(
-    () => checkScaPrompt(compared((m) => (m.values[1].value = "close"))),
-    /invalid `value` "close"/
-  );
+  // Nobody is asked to compare what the build produced with the submitted XPI: the linter
+  // compares it itself, so the prompts offer no such entry.
+  assert.equal(prompt.buildMatch, undefined);
+  for (const step of ["build", "rescue"]) {
+    const text = prompt.steps[step].map((s) => s.text).join("\n");
+    assert.ok(!text.includes("LLM_BUILD_XPI_MATCH"), step);
+    assert.ok(!text.includes("SUBMITTED_XPI"), step);
+  }
   // The build analysis is asked for its issues in the shape and length the hand-back holds
   // them to, filled in from the one place both are kept: the length at load, the shape where
   // the prompt is printed, its file an absolute path in SCA_SOURCE.

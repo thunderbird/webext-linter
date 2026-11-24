@@ -16,6 +16,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import AdmZip from "adm-zip";
+
 import {
   analyzeEntries,
   handBack,
@@ -225,18 +227,9 @@ const first = async (work, answers = {}) => {
   return stepOn(work);
 };
 
-/** The labels a build or rescue answers LLM_BUILD_OUTPUT with where it produced nothing. */
-const FAILED = ["The build failed", "The rescue failed"];
-
-/** The build or rescue step handed back with `output` as its LLM_BUILD_OUTPUT answer, and `match`
- *  as its LLM_BUILD_XPI_MATCH answer: `no match` beside an output, and null beside a failed label,
- *  unless the test says otherwise. */
-const handOutput = (
-  work,
-  output,
-  match = FAILED.includes(output) ? null : "no match"
-) => {
-  answer(work, { LLM_BUILD_OUTPUT: output, LLM_BUILD_XPI_MATCH: match });
+/** The build or rescue step handed back with `output` as its LLM_BUILD_OUTPUT answer. */
+const handOutput = (work, output) => {
+  answer(work, { LLM_BUILD_OUTPUT: output });
   return stepOn(work);
 };
 
@@ -372,19 +365,13 @@ test("a clean source moves on to the build", async () => {
   assert.deepEqual(at.record.current.vulnerabilities, NONE);
   assert.equal(at.record.current.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
-  const [output, match, ...rest] = reviewEntries(work);
-  assert.deepEqual(rest, []);
+  const [output, ...rest] = reviewEntries(work);
+  assert.deepEqual(rest, [], "the comparison with the XPI is asked of nobody");
   assert.equal(output.index, "LLM_BUILD_OUTPUT");
   assert.equal(output.message, "Where did the build put what it produced?");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The build failed"]
-  );
-  assert.equal(match.index, "LLM_BUILD_XPI_MATCH");
-  assert.equal(match.answer, null);
-  assert.deepEqual(
-    match.answers.map((a) => a.label),
-    ["match", "no match"]
   );
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
   assert.ok(fs.existsSync(workPaths(work).buildCopy), "the build copy is made");
@@ -479,17 +466,61 @@ test("a failed build is recorded, and the folder done", async () => {
   cleanup(work);
 });
 
-// The agent's comparison of its output with the submitted XPI is recorded as the id it
-// answered, beside the output.
-test("a build output is recorded with the agent's comparison", async () => {
-  for (const match of ["match", "no match"]) {
+// The linter compares the output with the submitted XPI itself, and records its answer beside
+// the output: the same files at the same paths with the same contents, where only line endings
+// may differ, is a match, a folder or a packed file alike. A missing, extra or changed file is
+// no match, and so is a packed output the XPI loader refuses.
+test("a build output is recorded with the linter's comparison", async () => {
+  const cases = [
+    ["the same tree", () => {}, "match"],
+    [
+      "only line endings differ",
+      (out, xpi) => {
+        writeTree(xpi, { "notes.txt": "one\ntwo\n" });
+        writeTree(out, { "notes.txt": "one\r\ntwo\r\n" });
+      },
+      "match",
+    ],
+    [
+      "a file missing",
+      (out) => fs.rmSync(path.join(out, "manifest.json")),
+      "no match",
+    ],
+    ["a file added", (out) => writeTree(out, { "extra.js": "" }), "no match"],
+    [
+      "a file changed",
+      (out) => writeTree(out, { "manifest.json": "{}" }),
+      "no match",
+    ],
+  ];
+  for (const [what, edit, expected] of cases) {
     const { work } = await clean();
-    const output = buildInto(workPaths(work).buildCopy);
-    const at = await handOutput(work, output, match);
-    assert.equal(at.record.current.buildResult, "built");
-    assert.equal(at.record.current.buildOutput, output);
-    assert.equal(at.record.current.buildMatch, match);
-    assert.deepEqual(recordOf(work), at.record);
+    const { buildCopy, xpi } = workPaths(work);
+    const output = buildInto(buildCopy, xpi);
+    edit(output, xpi);
+    const at = await handOutput(work, output);
+    assert.equal(at.record.current.buildResult, "built", what);
+    assert.equal(at.record.current.buildOutput, output, what);
+    assert.equal(at.record.current.buildMatch, expected, what);
+    assert.deepEqual(recordOf(work), at.record, what);
+    cleanup(work);
+  }
+  for (const [what, pack, expected] of [
+    [
+      "a packed build of the same tree",
+      (zip, xpi) => zip.addLocalFolder(xpi),
+      "match",
+    ],
+    ["a packed build of nothing", () => {}, "no match"],
+  ]) {
+    const { work } = await clean();
+    const { buildCopy, xpi } = workPaths(work);
+    const zip = new AdmZip();
+    pack(zip, xpi);
+    const output = path.join(buildCopy, "addon.xpi");
+    zip.writeZip(output);
+    const at = await handOutput(work, output);
+    assert.equal(at.record.current.buildMatch, expected, what);
     cleanup(work);
   }
   const { work } = await clean();
@@ -502,27 +533,24 @@ test("a build output is recorded with the agent's comparison", async () => {
   cleanup(work);
 });
 
-// LLM_BUILD_XPI_MATCH goes with an output only: a failed build that answers it, and an output that
-// leaves it open or answers it with no label it offers, are refused, with nothing changed.
-test("a comparison that does not go with the build's answer is refused", async () => {
+// The comparison is asked of nobody, so an LLM_BUILD_XPI_MATCH entry the agent adds is refused
+// as an entry the step did not ask about, with nothing changed.
+test("a comparison handed back by the agent is refused", async () => {
   const { work } = await clean();
   const output = buildInto(workPaths(work).buildCopy);
-  for (const [named, match, problem] of [
-    [
-      "The build failed",
-      "match",
-      'LLM_BUILD_XPI_MATCH answers "match", but LLM_BUILD_OUTPUT answers "The build failed": ' +
-        'leave its "answer" null',
-    ],
-    [output, null, 'LLM_BUILD_XPI_MATCH still has no "answer"'],
-    [
-      output,
-      "close enough",
-      'LLM_BUILD_XPI_MATCH answers "close enough", which this entry',
-    ],
-  ]) {
-    await assert.rejects(handOutput(work, named, match), refused(problem));
-  }
+  const file = workPaths(work).answers;
+  const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+  doc.entries = [
+    { ...doc.entries[0], answer: output },
+    { index: "LLM_BUILD_XPI_MATCH", answer: "match" },
+  ];
+  fs.writeFileSync(file, JSON.stringify(doc));
+  await assert.rejects(
+    stepOn(work),
+    refused(
+      "LLM_BUILD_XPI_MATCH is not one of the entries this pass asked about"
+    )
+  );
   assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.build);
   assert.ok(fs.existsSync(workPaths(work).answers), "nothing moved");
   cleanup(work);
@@ -574,7 +602,7 @@ test("a build step without its question hands the question out again", async () 
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.build);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["LLM_BUILD_OUTPUT", "LLM_BUILD_XPI_MATCH"]
+    ["LLM_BUILD_OUTPUT"]
   );
   cleanup(work);
 });
@@ -1041,17 +1069,12 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.deepEqual(at.record.current.vulnerabilities, ONE_HIGH);
   assert.equal(at.record.current.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
-  const [output, match, ...rest] = reviewEntries(work);
-  assert.deepEqual(rest, []);
+  const [output, ...rest] = reviewEntries(work);
+  assert.deepEqual(rest, [], "the comparison with the XPI is asked of nobody");
   assert.equal(output.index, "LLM_BUILD_OUTPUT");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The rescue failed"]
-  );
-  assert.equal(match.index, "LLM_BUILD_XPI_MATCH");
-  assert.deepEqual(
-    match.answers.map((a) => a.label),
-    ["match", "no match"]
   );
   assert.equal(
     fs.readFileSync(path.join(copy, "package.json"), "utf8"),
@@ -1376,34 +1399,27 @@ test("a clean copy with its build output is done with the copy's roots", async (
   cleanup(work);
 });
 
-// A rescue's comparison is recorded beside its output, and goes with an output only, as a
-// build's does.
-test("a rescue's comparison is recorded, and refused without an output", async () => {
-  const { work, root } = await rescued({
-    ...TOOL_HIGH,
-    "lint-pebble@0.4.1": [],
-  });
-  writeTree(root, {
-    "package.json": packageFile("0.4.1"),
-    "package-lock.json": npmLock("0.4.1"),
-  });
-  const output = buildRescued(work, root);
-  for (const [named, match, problem] of [
-    [
-      "The rescue failed",
-      "no match",
-      'LLM_BUILD_XPI_MATCH answers "no match", but LLM_BUILD_OUTPUT answers "The rescue failed"',
-    ],
-    [output, null, 'LLM_BUILD_XPI_MATCH still has no "answer"'],
-  ]) {
-    await assert.rejects(handOutput(work, named, match), refused(problem));
+// A rescue's output is compared with the submitted XPI by the linter, as a build's is, and
+// the comparison recorded beside it.
+test("a rescue's output is recorded with the linter's comparison", async () => {
+  for (const reproduces of [true, false]) {
+    const { work, root } = await rescued({
+      ...TOOL_HIGH,
+      "lint-pebble@0.4.1": [],
+    });
+    writeTree(root, {
+      "package.json": packageFile("0.4.1"),
+      "package-lock.json": npmLock("0.4.1"),
+    });
+    const at = await handOutput(work, buildRescued(work, root, reproduces));
+    assert.equal(at.record.current.buildResult, "built");
+    assert.equal(
+      at.record.current.buildMatch,
+      reproduces ? "match" : "no match"
+    );
+    assert.deepEqual(recordOf(work), at.record);
+    cleanup(work);
   }
-  assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.rescue);
-  const at = await handOutput(work, output, "match");
-  assert.equal(at.record.current.buildResult, "built");
-  assert.equal(at.record.current.buildMatch, "match");
-  assert.deepEqual(recordOf(work), at.record);
-  cleanup(work);
 });
 
 // The linter audits the copy itself: a copy still vulnerable fails the rescue, whatever
@@ -1640,7 +1656,7 @@ test("a rescue without its question hands the question out again", async () => {
   assert.equal(again.record.current.step, BUILD_CHECK_STEP.rescue);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["LLM_BUILD_OUTPUT", "LLM_BUILD_XPI_MATCH"]
+    ["LLM_BUILD_OUTPUT"]
   );
   cleanup(work);
 });
@@ -1940,7 +1956,7 @@ test("a build record the linter would not write cannot be carried on", async (t)
       "holds a built result without buildMatch",
     ],
     [
-      "a comparison the agent cannot give",
+      "a comparison the linter does not write",
       (r) => ({
         ...r,
         step: BUILD_CHECK_STEP.done,
@@ -1948,7 +1964,7 @@ test("a build record the linter would not write cannot be carried on", async (t)
         buildOutput: r.roots.packageRoot,
         buildMatch: "close enough",
       }),
-      "holds buildMatch as no answer the agent can give",
+      "holds buildMatch as no comparison the linter writes",
     ],
     [
       "a build the reviewer did not allow",

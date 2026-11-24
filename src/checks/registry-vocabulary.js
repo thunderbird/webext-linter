@@ -330,7 +330,7 @@ export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
  *  (src/pipeline.js). */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
 
-/** The values the build check's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's
- *  comparison of what its build produced with the submitted XPI. Each id is offered exactly
- *  once (assertScaPrompt), and the record holds the id it was answered with. */
+/** The linter's comparison of what the agent's build produced with the submitted XPI, by id
+ *  (src/build-check/steps.js xpiMatch): the record holds one, and the Build Review Details
+ *  show it as LLM_BUILD_XPI_MATCH. */
 export const BUILD_MATCH_VALUES = ["match", "no match"];

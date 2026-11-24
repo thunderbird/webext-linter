@@ -479,9 +479,8 @@ function valueLines(entries) {
  * it can still name where one should land - ANSWERS on every later prompt, and on `unpack`
  * where it asks for the Experiment folder, and the
  * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_REPORT on the `analyze` prompt,
- * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
- * and SCA_BUILD_REPORT on the rescue's, and SUBMITTED_XPI on both, which the build's output
- * is compared with. The STEPS are prose, and they name those given values - and the one the
+ * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT on the build's, and RESCUE_ROOT,
+ * LLM_BUILD_ROOT and SCA_BUILD_REPORT on the rescue's. The STEPS are prose, and they name those given values - and the one the
  * reader of `unpack` may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
  * themselves. The FLAGS are the finished command, one flag per line, filled into the step
  * that says to run it, and the COPY is the rescue's two commands that make the build copy,
@@ -514,8 +513,6 @@ function valueLines(entries) {
  * @param {string[]} [values.buildDetails]  On the decision prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On the rescue prompt: the package root in the rescued copy.
- * @param {string} [values.submittedXpi]  On the build and rescue prompts: the submitted
- *   XPI, absolute.
  * @param {string[]} [values.copy]  On the rescue prompt: the commands that replace `build/`
  *   with a copy of the whole `rescued/`, composed by the front-end.
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
@@ -551,7 +548,6 @@ export function scaPromptLines(prompt, list, values) {
     ["RESCUE_ROOT", values.rescueRoot],
     ["LLM_BUILD_ROOT", values.buildRoot],
     ["SCA_BUILD_REPORT", values.buildProcess],
-    ["SUBMITTED_XPI", values.submittedXpi],
   ].filter(([, value]) => value);
   if (build.length) {
     lines.push("", "Build:", ...valueLines(build));

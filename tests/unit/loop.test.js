@@ -763,9 +763,9 @@ test("the build details name the XPI, the source, the report, the judgement, the
   ]);
 });
 
-// LLM_BUILD_XPI_MATCH is the agent's comparison of its output with the submitted XPI, shown after
-// LLM_BUILD_OUTPUT and only beside it: a build that produced nothing compared nothing.
-test("the build details show the agent's comparison only beside its output", () => {
+// LLM_BUILD_XPI_MATCH is the linter's comparison of the agent's output with the submitted XPI,
+// shown after LLM_BUILD_OUTPUT and only beside it: a build that produced nothing compared nothing.
+test("the build details show the linter's comparison only beside its output", () => {
   for (const [build, shown] of [
     [{ result: "built", output: "/w/build/dist", match: "match" }, "match"],
     [
@@ -2994,8 +2994,9 @@ test("each block the reviewer reads opens its question phase and ends the turn t
   }
 });
 
-// The agent built the add-on and compared it in the build check, and the review asks it only
-// to put the question: the reviewer reads LLM_BUILD_XPI_MATCH beside LLM_BUILD_OUTPUT and XPI_FILE.
+// The agent built the add-on in the build check and the linter compared it, and the review asks
+// it only to put the question: the reviewer reads LLM_BUILD_XPI_MATCH beside LLM_BUILD_OUTPUT and
+// XPI_FILE.
 test("the build question tells the agent to build and compare nothing", () => {
   const made = buildQuestionsReview(tmp());
   made.record.build = { result: "built", output: "/w/build/dist" };
@@ -3006,7 +3007,7 @@ test("the build question tells the agent to build and compare nothing", () => {
   assert.ok(worded, built.steps.map((step) => step.first).join(" | "));
   assert.ok(
     worded.rendered.includes(
-      "LLM_BUILD_XPI_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
+      "LLM_BUILD_XPI_MATCH is the linter's comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
     ),
     worded.rendered
   );

@@ -51,6 +51,7 @@
 // what each prompt says (-> `llm-sca-review-prompt` in assets/registry.yaml).
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -67,6 +68,8 @@ import {
   vulnerabilityCounts,
 } from "./audit.js";
 import { checkSelected } from "../checks/registry.js";
+import { loadAddon } from "../addon/load.js";
+import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { splitList } from "../lib/util.js";
 import { misplacedFolders, runCache, workPaths } from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
@@ -100,9 +103,6 @@ const SCA_BUILD_SAFETY_ISSUES = "SCA_BUILD_SAFETY_ISSUES";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
 const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
-/** The review file's entry for the agent's comparison of that output with the submitted XPI,
- *  as `llm-sca-review-prompt` names it: answered only where the build produced an output. */
-const LLM_BUILD_XPI_MATCH = "LLM_BUILD_XPI_MATCH";
 /**
  * Whether the hot runs switched the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1): their
  * stand-in for the reviewer's build decision, which nothing documents. It lets the agent
@@ -138,11 +138,6 @@ function agentBuildsSwitchedOn() {
  * The registry's question for a build's output, as llmScaReviewPrompt gives it: the build's
  * or the rescue's.
  * @typedef {ScaPrompt["buildOutput"]} OutputAsk
- */
-
-/**
- * The registry's comparison entry, as llmScaReviewPrompt gives it.
- * @typedef {ScaPrompt["buildMatch"]} MatchAsk
  */
 
 /**
@@ -212,83 +207,105 @@ function outputPhase(ask) {
 }
 
 /**
- * The entry the agent compares its build's output with the submitted XPI in, built as a
- * process value's entry is.
- * @param {MatchAsk} question
- * @returns {object}
- */
-function matchEntry(question) {
-  return valueEntry(
-    { name: LLM_BUILD_XPI_MATCH, values: question.values },
-    question.question
-  );
-}
-
-/**
- * The two entries the build and rescue prompts hand out: where the build put its output, and
- * how that output compares with the submitted XPI.
+ * The one entry the build and rescue prompts hand out: where the build put its output. How
+ * that output compares with the submitted XPI is the linter's to say (xpiMatch).
  * @param {OutputAsk} asked
- * @param {MatchAsk} match
  * @returns {object[]}
  */
-function buildEntries(asked, match) {
-  return [outputEntry(outputPhase(asked)), matchEntry(match)];
+function buildEntries(asked) {
+  return [outputEntry(outputPhase(asked))];
 }
 
 /**
- * The build or rescue step's two answers, read from the review file, or undefined where the
- * file holds no LLM_BUILD_OUTPUT entry: the file an earlier step left, by a run cut short before
- * it wrote the question, which is then handed out again.
- *
- * LLM_BUILD_OUTPUT is checked as an output phase takes it. LLM_BUILD_XPI_MATCH belongs to an
- * output only: beside the `failed` label it must stay null, and beside a path it must be one of the
- * labels its entry offers. Either way round is refused, with nothing changed. The match comes
- * back as its id.
+ * The build or rescue step's answer, read from the review file and checked as an output phase
+ * takes it, or undefined where the file holds no LLM_BUILD_OUTPUT entry: the file an earlier
+ * step left, by a run cut short before it wrote the question, which is then handed out again.
  * @param {string} work
  * @param {OutputAsk} asked
- * @param {MatchAsk} match
- * @returns {{answer: string, match: ?string}|undefined}
+ * @returns {string|undefined}
  * @throws {HandbackRefused}
  */
-function builtAnswers(work, asked, match) {
-  const file = workPaths(work).answers;
-  const keyOf = (e) => String(e?.index);
-  const entries = fs.existsSync(file) ? readHandback(file).entries : [];
-  if (!entries.some((e) => keyOf(e) === LLM_BUILD_OUTPUT)) {
-    return undefined;
-  }
+function builtAnswer(work, asked) {
   const phase = outputPhase(asked);
-  const answer = answersOf(
-    entries.filter((e) => keyOf(e) !== LLM_BUILD_XPI_MATCH),
-    [outputEntry(phase)],
-    phase,
-    keyOf
-  ).get(LLM_BUILD_OUTPUT);
-  const compared = entries.filter((e) => keyOf(e) === LLM_BUILD_XPI_MATCH);
-  if (answer === phase.failed.label) {
-    if (compared.length !== 1) {
-      throw new HandbackRefused(
-        `${LLM_BUILD_XPI_MATCH} ${compared.length ? "appears twice" : "is missing from the file"}`
-      );
+  return answerOf(work, outputEntry(phase), phase);
+}
+
+/**
+ * Whether what the build produced is the submitted XPI: the same files at the same paths, each
+ * with the same contents, where only line endings may differ. The linter's own comparison,
+ * never the agent's: a build that matches is the evidence that the shipped XPI comes from the
+ * source the review reads.
+ *
+ * Both sides are read by the loader the review reads an XPI with (loadAddon), so a packed
+ * output is held to the same limits as the submitted XPI: one it refuses, too large or
+ * holding a link, is no match. A packed output is extracted into a temporary folder of its
+ * own, removed again afterwards. The submitted XPI is the work folder's extracted copy, read
+ * where it is.
+ * @param {string} output  What the build produced, a file or folder (outputAt).
+ * @param {string} xpiRoot  The work folder's extracted XPI.
+ * @returns {string}  A BUILD_MATCH_VALUES id.
+ */
+export function xpiMatch(output, xpiRoot) {
+  const packed = fs.statSync(output).isFile();
+  const scratch = packed
+    ? fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-build-"))
+    : null;
+  try {
+    let built;
+    try {
+      built = loadAddon(output, scratch ? path.join(scratch, "x") : undefined, {
+        kind: ARTIFACT_XPI,
+      }).store;
+    } catch (err) {
+      rethrowIfFatal(err);
+      return "no match";
     }
-    if (compared[0][SLOT] !== null && compared[0][SLOT] !== undefined) {
-      throw new HandbackRefused(
-        `${LLM_BUILD_XPI_MATCH} answers "${displayLine(String(compared[0][SLOT]))}", but ` +
-          `${LLM_BUILD_OUTPUT} answers "${phase.failed.label}": leave its "${SLOT}" null`
-      );
+    const submitted = loadAddon(xpiRoot, undefined, {
+      kind: ARTIFACT_XPI,
+    }).store;
+    return sameFiles(built, submitted) ? "match" : "no match";
+  } finally {
+    if (scratch) {
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
-    return { answer, match: null };
   }
-  const picked = answersOf(
-    compared,
-    [matchEntry(match)],
-    { name: phase.name, answer: "value" },
-    keyOf
-  ).get(LLM_BUILD_XPI_MATCH);
-  return {
-    answer,
-    match: match.values.find((v) => v.label === picked).value,
-  };
+}
+
+/**
+ * Whether two loaded file stores hold the same files, each with the same contents once every
+ * carriage return before a line feed is dropped.
+ * @param {Map<string, Buffer>} a
+ * @param {Map<string, Buffer>} b
+ * @returns {boolean}
+ */
+function sameFiles(a, b) {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [key, bytes] of a) {
+    const other = b.get(key);
+    if (!other || !lfOnly(bytes).equals(lfOnly(other))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The bytes with every carriage return that stands before a line feed dropped.
+ * @param {Buffer} bytes
+ * @returns {Buffer}
+ */
+function lfOnly(bytes) {
+  const out = Buffer.allocUnsafe(bytes.length);
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0x0d && bytes[i + 1] === 0x0a) {
+      continue;
+    }
+    out[n++] = bytes[i];
+  }
+  return out.subarray(0, n);
 }
 
 /**
@@ -318,15 +335,9 @@ export async function handBack(work, record, registry) {
     case BUILD_CHECK_STEP.decision:
       return decision(work, record, prompt);
     case BUILD_CHECK_STEP.build:
-      return builtOriginal(work, record, prompt.buildOutput, prompt.buildMatch);
+      return builtOriginal(work, record, prompt.buildOutput);
     case BUILD_CHECK_STEP.rescue:
-      return rescueStep(
-        work,
-        record,
-        context,
-        prompt.rescueOutput,
-        prompt.buildMatch
-      );
+      return rescueStep(work, record, context, prompt.rescueOutput);
     default:
       return doneAgain(work, record);
   }
@@ -534,44 +545,40 @@ function permitted(work, record, prompt) {
     return done(work, record);
   }
   if (countsVulnerable(record.current.vulnerabilities)) {
-    return rescue(work, record, prompt.rescueOutput, prompt.buildMatch);
+    return rescue(work, record, prompt.rescueOutput);
   }
   const { sca, buildCopy } = workPaths(work);
   wholeCopy(sca, buildCopy, "build copy");
   return ask(
     movedOn(record, { step: BUILD_CHECK_STEP.build }),
-    buildEntries(prompt.buildOutput, prompt.buildMatch)
+    buildEntries(prompt.buildOutput)
   );
 }
 
 /**
  * The build step, handed back: what the agent's build of the clean original produced, held
- * to `build/`, and how it compares with the submitted XPI, or that it failed. Either way the
- * folder is done. A path that names nothing the build produced there is refused, with nothing
- * changed.
+ * to `build/`, and the linter's comparison of it with the submitted XPI, or that it failed.
+ * Either way the folder is done. A path that names nothing the build produced there is
+ * refused, with nothing changed.
  * @param {string} work
  * @param {object} record  At `build`.
  * @param {OutputAsk} asked
- * @param {MatchAsk} match
  * @returns {Handout}
  * @throws {HandbackRefused}
  */
-function builtOriginal(work, record, asked, match) {
-  const answers = builtAnswers(work, asked, match);
-  if (answers === undefined) {
-    return ask(record, buildEntries(asked, match));
+function builtOriginal(work, record, asked) {
+  const answer = builtAnswer(work, asked);
+  if (answer === undefined) {
+    return ask(record, buildEntries(asked));
   }
-  const output = outputAt(
-    answers.answer,
-    outputPhase(asked),
-    workPaths(work).buildCopy
-  );
+  const paths = workPaths(work);
+  const output = outputAt(answer, outputPhase(asked), paths.buildCopy);
   return done(
     work,
     movedOn(record, {
       buildResult: output ? BUILD_RESULT.built : BUILD_RESULT.failed,
       buildOutput: output,
-      buildMatch: answers.match,
+      buildMatch: output ? xpiMatch(output, paths.xpi) : null,
     })
   );
 }
@@ -732,11 +739,10 @@ function done(work, record) {
  * @param {string} work
  * @param {object} record  Audited.
  * @param {OutputAsk} asked
- * @param {MatchAsk} match
  * @returns {Handout}
  * @throws {Error}  The copy could not be made.
  */
-function rescue(work, record, asked, match) {
+function rescue(work, record, asked) {
   const { sca: from, rescued: to } = workPaths(work);
   const real = fs.realpathSync(from);
   const into = (p) => path.join(to, path.relative(real, p));
@@ -748,7 +754,7 @@ function rescue(work, record, asked, match) {
       step: BUILD_CHECK_STEP.rescue,
       roots: moveTree(record.current.roots, (p) => fs.realpathSync(into(p))),
     }),
-    buildEntries(asked, match)
+    buildEntries(asked)
   );
 }
 
@@ -781,7 +787,8 @@ function wholeCopy(from, to, called) {
  * The rescue, handed back: the copy's lock audited, whatever the agent answered, and its
  * counts recorded beside the submitted lock's, null where the audit cannot read it in full.
  * Done with the copy as the reviewed source where the output the agent named lies inside
- * `build/` and the copy's lock audits clean, with the agent's comparison recorded. Otherwise,
+ * `build/` and the copy's lock audits clean, with the linter's comparison of the output with
+ * the submitted XPI recorded. Otherwise,
  * or where the agent answered that the rescue failed, the rescue failed: the folder is done
  * with its roots back in `sca/`, before `build/` is removed, the copy left as the agent left
  * it.
@@ -789,19 +796,17 @@ function wholeCopy(from, to, called) {
  * @param {object} record  At `rescue`.
  * @param {AuditContext} context
  * @param {OutputAsk} asked
- * @param {MatchAsk} match
  * @returns {Promise<Handout>}
- * @throws {HandbackRefused}  An answer that is no path and no label, or a comparison that
- *   does not go with it.
+ * @throws {HandbackRefused}  An answer that is no path and no label.
  */
-async function rescueStep(work, record, context, asked, match) {
+async function rescueStep(work, record, context, asked) {
   const phase = outputPhase(asked);
-  const answers = builtAnswers(work, asked, match);
-  if (answers === undefined) {
-    return ask(record, buildEntries(asked, match));
+  const answer = builtAnswer(work, asked);
+  if (answer === undefined) {
+    return ask(record, buildEntries(asked));
   }
-  const { sca, rescued, buildCopy } = workPaths(work);
-  const output = producedIn(answers.answer, phase, buildCopy);
+  const { sca, rescued, buildCopy, xpi } = workPaths(work);
+  const output = producedIn(answer, phase, buildCopy);
   const found = await auditRoot(record.current.roots, context);
   const rescuedVulnerabilities = found.complete
     ? vulnerabilityCounts(found)
@@ -813,7 +818,7 @@ async function rescueStep(work, record, context, asked, match) {
         rescuedVulnerabilities,
         buildResult: BUILD_RESULT.built,
         buildOutput: output,
-        buildMatch: answers.match,
+        buildMatch: xpiMatch(output, xpi),
       })
     );
   }
@@ -896,7 +901,7 @@ function handbackCommand(work) {
  * names beside its steps follows its step: the submission and where to extract it (`unpack`),
  * the source, its package root and the build report (`analyze`), the Build Review Details
  * (`decision`), and the folders a build runs in. Every build runs at the package root's place
- * in `build/`, its output is compared with the submitted XPI, and the rescue's agent makes
+ * in `build/`, the linter compares its output with the submitted XPI, and the rescue's agent makes
  * `build/` a copy of the whole `rescued/` before each build, with the two commands named here.
  * @param {string} work
  * @param {object} record  At the step its prompt is for.
@@ -935,14 +940,12 @@ export function stepPromptLines(work, record, registry, start = {}) {
       scaPackageRoot: roots.packageRoot,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
-      submittedXpi: record.submission.xpi,
     }),
     [BUILD_CHECK_STEP.rescue]: () => ({
       answers: paths.answers,
       rescueRoot: roots.packageRoot,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
-      submittedXpi: record.submission.xpi,
       copy: [
         `rm -rf ${shellArg(paths.buildCopy)}`,
         `cp -a ${shellArg(paths.rescued)} ${shellArg(paths.buildCopy)}`,
